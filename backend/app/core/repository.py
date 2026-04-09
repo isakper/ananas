@@ -35,6 +35,14 @@ class PostingCreate:
     credit_amount: Decimal
 
 
+class AccountConflictError(ValueError):
+    """Raised when account uniqueness constraints are violated."""
+
+
+class AccountInUseError(ValueError):
+    """Raised when attempting to deactivate an account used by approved entries."""
+
+
 class AppRepository:
     """PostgreSQL repository for core take-home workflows."""
 
@@ -54,6 +62,102 @@ class AppRepository:
                 )
                 rows = cur.fetchall()
         return [_account_from_row(row) for row in rows]
+
+    def get_account(self, account_id: UUID) -> AccountRecord | None:
+        """Return chart-of-accounts row by id."""
+        with self._database.connection() as conn:
+            with conn.cursor(row_factory=dict_row) as cur:
+                cur.execute(
+                    """
+                    SELECT id, code, name, is_active, created_at, updated_at
+                    FROM accounts
+                    WHERE id = %s
+                    """,
+                    (account_id,),
+                )
+                row = cur.fetchone()
+        if row is None:
+            return None
+        return _account_from_row(row)
+
+    def create_account(self, code: int, name: str) -> AccountRecord:
+        """Create a chart-of-accounts entry."""
+        try:
+            with self._database.connection() as conn:
+                with conn.cursor(row_factory=dict_row) as cur:
+                    cur.execute(
+                        """
+                        INSERT INTO accounts (code, name, is_active)
+                        VALUES (%s, %s, TRUE)
+                        RETURNING id, code, name, is_active, created_at, updated_at
+                        """,
+                        (code, name),
+                    )
+                    row = cur.fetchone()
+        except Exception as exc:
+            if _is_unique_violation(exc):
+                raise AccountConflictError("Account code already exists") from exc
+            raise
+        if row is None:
+            raise ValueError("Failed to create account")
+        return _account_from_row(row)
+
+    def update_account(
+        self,
+        account_id: UUID,
+        code: int | None,
+        name: str | None,
+        is_active: bool | None,
+    ) -> AccountRecord | None:
+        """Update account fields and enforce deactivation safeguards."""
+        try:
+            with self._database.connection() as conn:
+                with conn.cursor(row_factory=dict_row) as cur:
+                    current = self._load_account_row(cur, account_id)
+                    if current is None:
+                        return None
+
+                    if is_active is False:
+                        current_is_active = _bool(current["is_active"])
+                        if (
+                            current_is_active
+                            and self._account_used_in_approved_entries(cur, account_id)
+                        ):
+                            raise AccountInUseError(
+                                "Account is used by an approved journal entry"
+                            )
+
+                    cur.execute(
+                        """
+                        UPDATE accounts
+                        SET code = COALESCE(%s, code),
+                            name = COALESCE(%s, name),
+                            is_active = COALESCE(%s, is_active)
+                        WHERE id = %s
+                        RETURNING id, code, name, is_active, created_at, updated_at
+                        """,
+                        (code, name, is_active, account_id),
+                    )
+                    row = cur.fetchone()
+        except Exception as exc:
+            if isinstance(exc, AccountInUseError):
+                raise
+            if _is_unique_violation(exc):
+                raise AccountConflictError("Account code already exists") from exc
+            raise
+
+        if row is None:
+            return None
+        return _account_from_row(row)
+
+    def deactivate_account(self, account_id: UUID) -> AccountRecord | None:
+        """Soft-delete account by deactivating it."""
+        return self.update_account(
+            account_id=account_id,
+            code=None,
+            name=None,
+            is_active=False,
+        )
 
     def create_invoice(
         self,
@@ -437,6 +541,41 @@ class AppRepository:
         if valid_count != len(account_ids):
             raise ValueError("Journal entry references missing or inactive accounts")
 
+    def _load_account_row(self, cur: Any, account_id: UUID) -> dict[str, Any] | None:
+        cur.execute(
+            """
+            SELECT id, code, name, is_active, created_at, updated_at
+            FROM accounts
+            WHERE id = %s
+            """,
+            (account_id,),
+        )
+        row = cur.fetchone()
+        if row is None:
+            return None
+        if isinstance(row, dict):
+            return row
+        raise ValueError("Unexpected account row shape")
+
+    def _account_used_in_approved_entries(self, cur: Any, account_id: UUID) -> bool:
+        cur.execute(
+            """
+            SELECT EXISTS (
+                SELECT 1
+                FROM journal_postings jp
+                JOIN journal_entries je
+                  ON je.id = jp.journal_entry_id
+                WHERE jp.account_id = %s
+                  AND je.status = 'approved'
+            ) AS in_use
+            """,
+            (account_id,),
+        )
+        row = cur.fetchone()
+        if row is None:
+            raise ValueError("Could not verify account usage")
+        return _bool(row["in_use"])
+
 
 def _account_from_row(row: dict[str, Any]) -> AccountRecord:
     return AccountRecord(
@@ -555,3 +694,8 @@ def _datetime(value: Any) -> datetime:
     if isinstance(value, datetime):
         return value
     raise ValueError("Expected datetime value")
+
+
+def _is_unique_violation(exc: Exception) -> bool:
+    message = str(exc).lower()
+    return "duplicate key value violates unique constraint" in message

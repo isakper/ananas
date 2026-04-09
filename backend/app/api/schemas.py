@@ -33,6 +33,21 @@ class AccountResponse(BaseModel):
         return cls(**record.__dict__)
 
 
+class AccountCreateRequest(BaseModel):
+    """Payload for creating an account."""
+
+    code: int
+    name: str
+
+
+class AccountUpdateRequest(BaseModel):
+    """Payload for updating an account."""
+
+    code: int | None = None
+    name: str | None = None
+    is_active: bool | None = None
+
+
 class JournalPostingResponse(BaseModel):
     """Journal posting output model."""
 

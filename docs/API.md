@@ -21,6 +21,9 @@ Response:
 ## Accounts
 
 - `GET /accounts`
+- `POST /accounts`
+- `PATCH /accounts/{account_id}`
+- `DELETE /accounts/{account_id}`
 
 Response:
 
@@ -36,6 +39,31 @@ Response:
   }
 ]
 ```
+
+Create payload:
+
+```json
+{
+  "code": 6541,
+  "name": "Nytt konto"
+}
+```
+
+Update payload (partial):
+
+```json
+{
+  "name": "Nytt kontonamn",
+  "is_active": true
+}
+```
+
+Safeguards:
+
+- `code` must be unique.
+- `code` must be positive.
+- `name` is required on create.
+- Deactivation is blocked when an account is used in approved journal entries (`409`).
 
 ## Invoices
 
