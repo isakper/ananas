@@ -1,4 +1,5 @@
 """Service wrapper for journal suggestion generation."""
+
 from __future__ import annotations
 
 from backend.app.accounting.journal_suggester import JournalSuggester

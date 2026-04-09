@@ -1,4 +1,5 @@
 """Types for journal-entry suggestion generation."""
+
 from __future__ import annotations
 
 from dataclasses import dataclass

@@ -66,9 +66,18 @@ class AppRepository:
             with conn.cursor(row_factory=dict_row) as cur:
                 cur.execute(
                     """
-                    INSERT INTO invoices (original_filename, mime_type, file_path, extracted_text)
-                    VALUES (%s, %s, %s, NULL)
-                    RETURNING id, original_filename, mime_type, file_path, extracted_text, created_at, updated_at
+                    INSERT INTO invoices (
+                        original_filename,
+                        mime_type,
+                        file_path,
+                        extracted_text,
+                        generation_status,
+                        generation_error,
+                        generated_at
+                    )
+                    VALUES (%s, %s, %s, NULL, 'uploaded', NULL, NULL)
+                    RETURNING id, original_filename, mime_type, file_path, extracted_text,
+                              generation_status, generation_error, generated_at, created_at, updated_at
                     """,
                     (original_filename, mime_type, file_path),
                 )
@@ -83,7 +92,8 @@ class AppRepository:
             with conn.cursor(row_factory=dict_row) as cur:
                 cur.execute(
                     """
-                    SELECT id, original_filename, mime_type, file_path, extracted_text, created_at, updated_at
+                    SELECT id, original_filename, mime_type, file_path, extracted_text,
+                           generation_status, generation_error, generated_at, created_at, updated_at
                     FROM invoices
                     WHERE id = %s
                     """,
@@ -100,7 +110,8 @@ class AppRepository:
             with conn.cursor(row_factory=dict_row) as cur:
                 cur.execute(
                     """
-                    SELECT id, original_filename, mime_type, file_path, extracted_text, created_at, updated_at
+                    SELECT id, original_filename, mime_type, file_path, extracted_text,
+                           generation_status, generation_error, generated_at, created_at, updated_at
                     FROM invoices
                     WHERE id = %s
                     """,
@@ -138,7 +149,8 @@ class AppRepository:
                     UPDATE invoices
                     SET extracted_text = %s
                     WHERE id = %s
-                    RETURNING id, original_filename, mime_type, file_path, extracted_text, created_at, updated_at
+                    RETURNING id, original_filename, mime_type, file_path, extracted_text,
+                              generation_status, generation_error, generated_at, created_at, updated_at
                     """,
                     (markdown, invoice_id),
                 )
@@ -146,6 +158,54 @@ class AppRepository:
         if row is None:
             return None
         return _invoice_from_row(row)
+
+    def mark_invoice_generation_started(self, invoice_id: UUID) -> bool:
+        """Set invoice generation status to generating."""
+        with self._database.connection() as conn:
+            with conn.cursor() as cur:
+                cur.execute(
+                    """
+                    UPDATE invoices
+                    SET generation_status = 'generating',
+                        generation_error = NULL,
+                        generated_at = NULL
+                    WHERE id = %s
+                    """,
+                    (invoice_id,),
+                )
+                return cur.rowcount > 0
+
+    def mark_invoice_generation_ready(self, invoice_id: UUID) -> bool:
+        """Set invoice generation status to ready."""
+        with self._database.connection() as conn:
+            with conn.cursor() as cur:
+                cur.execute(
+                    """
+                    UPDATE invoices
+                    SET generation_status = 'ready',
+                        generation_error = NULL,
+                        generated_at = NOW()
+                    WHERE id = %s
+                    """,
+                    (invoice_id,),
+                )
+                return cur.rowcount > 0
+
+    def mark_invoice_generation_failed(self, invoice_id: UUID, error: str) -> bool:
+        """Set invoice generation status to failed with error details."""
+        with self._database.connection() as conn:
+            with conn.cursor() as cur:
+                cur.execute(
+                    """
+                    UPDATE invoices
+                    SET generation_status = 'failed',
+                        generation_error = %s,
+                        generated_at = NULL
+                    WHERE id = %s
+                    """,
+                    (error[:1000], invoice_id),
+                )
+                return cur.rowcount > 0
 
     def replace_suggested_journal_entry(
         self, invoice_id: UUID, postings: list[SuggestedPosting]
@@ -381,12 +441,23 @@ def _invoice_from_row(row: dict[str, Any]) -> InvoiceRecord:
         extracted = None
     else:
         extracted = _str(extracted_raw)
+    generation_error_raw = row["generation_error"]
+    generation_error: str | None
+    if generation_error_raw is None:
+        generation_error = None
+    else:
+        generation_error = _str(generation_error_raw)
+    generated_at_raw = row["generated_at"]
+    generated_at = None if generated_at_raw is None else _datetime(generated_at_raw)
     return InvoiceRecord(
         id=_uuid(row["id"]),
         original_filename=_str(row["original_filename"]),
         mime_type=_str(row["mime_type"]),
         file_path=_str(row["file_path"]),
         extracted_text=extracted,
+        generation_status=_str(row["generation_status"]),
+        generation_error=generation_error,
+        generated_at=generated_at,
         created_at=_datetime(row["created_at"]),
         updated_at=_datetime(row["updated_at"]),
     )

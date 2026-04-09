@@ -1,13 +1,17 @@
 """Workflow for generating suggested journal entries."""
+
 from __future__ import annotations
 
 from pathlib import Path
+from typing import TYPE_CHECKING
 from uuid import UUID
 
 from backend.app.accounting.journal_generation_service import JournalGenerationService
 from backend.app.core.records import InvoiceBundleRecord
-from backend.app.core.repository import AppRepository
 from backend.app.documents.service import DocumentExtractionService
+
+if TYPE_CHECKING:
+    from backend.app.core.repository import AppRepository
 
 
 class InvoiceNotFoundError(Exception):
@@ -33,20 +37,39 @@ class JournalGenerationWorkflow:
         if invoice is None:
             raise InvoiceNotFoundError("Invoice not found")
 
-        markdown = self._extraction_service.extract_markdown(
-            pdf_path=Path(invoice.file_path)
-        )
-        self._repository.save_invoice_markdown(invoice_id=invoice.id, markdown=markdown)
+        marked_generating = self._repository.mark_invoice_generation_started(invoice.id)
+        if not marked_generating:
+            raise InvoiceNotFoundError("Invoice not found")
 
-        accounts = [account for account in self._repository.list_accounts() if account.is_active]
-        postings = self._journal_generation_service.generate_postings(
-            markdown=markdown,
-            accounts=accounts,
-        )
-        self._repository.replace_suggested_journal_entry(
-            invoice_id=invoice.id,
-            postings=postings,
-        )
+        try:
+            markdown = self._extraction_service.extract_markdown(
+                pdf_path=Path(invoice.file_path)
+            )
+            self._repository.save_invoice_markdown(
+                invoice_id=invoice.id,
+                markdown=markdown,
+            )
+
+            accounts = [
+                account
+                for account in self._repository.list_accounts()
+                if account.is_active
+            ]
+            postings = self._journal_generation_service.generate_postings(
+                markdown=markdown,
+                accounts=accounts,
+            )
+            self._repository.replace_suggested_journal_entry(
+                invoice_id=invoice.id,
+                postings=postings,
+            )
+            self._repository.mark_invoice_generation_ready(invoice.id)
+        except Exception as exc:
+            self._repository.mark_invoice_generation_failed(
+                invoice.id,
+                str(exc),
+            )
+            raise
 
         bundle = self._repository.get_invoice_bundle(invoice.id)
         if bundle is None:

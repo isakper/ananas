@@ -96,6 +96,9 @@ class InvoiceResponse(BaseModel):
     mime_type: str
     file_path: str
     extracted_text: str | None
+    generation_status: Literal["uploaded", "generating", "ready", "failed"]
+    generation_error: str | None
+    generated_at: datetime | None
     created_at: datetime
     updated_at: datetime
 

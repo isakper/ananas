@@ -1,10 +1,11 @@
 """Accounting-domain journal suggestion logic."""
+
 from __future__ import annotations
 
 from decimal import Decimal, InvalidOperation
 from typing import Any, Protocol
 
-from backend.app.accounting.service import AccountChoice, choose_default_accounts
+from backend.app.accounting.service import PostingAmounts, is_balanced
 from backend.app.accounting.types import SuggestedPosting
 from backend.app.core.records import AccountRecord
 from backend.app.integrations.llm.client import LlmGateway
@@ -49,11 +50,19 @@ class LlmJournalSuggester:
                 max_tokens=3000,
             )
         )
-        payload = response.json_payload or {}
+        payload = response.json_payload
+        if payload is None:
+            raise ValueError("LLM did not return valid JSON output")
         postings = _postings_from_payload(payload=payload, accounts=active_accounts)
-        if len(postings) > 0:
-            return postings
-        return _fallback_postings(active_accounts)
+        if len(postings) == 0:
+            raise ValueError("LLM output did not contain valid journal postings")
+        amounts = [
+            PostingAmounts(debit=posting.debit_amount, credit=posting.credit_amount)
+            for posting in postings
+        ]
+        if not is_balanced(amounts):
+            raise ValueError("LLM suggested postings are not balanced")
+        return postings
 
 
 def _build_mapping_instruction(markdown: str, accounts: list[AccountRecord]) -> str:
@@ -145,30 +154,3 @@ def _to_decimal(value: Any) -> Decimal | None:
         except InvalidOperation:
             return None
     return None
-
-
-def _fallback_postings(accounts: list[AccountRecord]) -> list[SuggestedPosting]:
-    account_choices = [
-        AccountChoice(id=record.id, code=record.code, name=record.name)
-        for record in accounts
-    ]
-    debit_account, credit_account = choose_default_accounts(account_choices)
-    amount = Decimal("1000.00")
-    return [
-        SuggestedPosting(
-            account_id=debit_account.id,
-            account_code=debit_account.code,
-            account_name=debit_account.name,
-            description="Stub suggestion debit line",
-            debit_amount=amount,
-            credit_amount=Decimal("0.00"),
-        ),
-        SuggestedPosting(
-            account_id=credit_account.id,
-            account_code=credit_account.code,
-            account_name=credit_account.name,
-            description="Stub suggestion credit line",
-            debit_amount=Decimal("0.00"),
-            credit_amount=amount,
-        ),
-    ]

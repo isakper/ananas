@@ -1,11 +1,15 @@
 """Generic LLM integration client boundary."""
+
 from __future__ import annotations
 
 import base64
 import json
+import ssl
 import urllib.error
 import urllib.request
 from typing import Protocol
+
+import certifi
 
 from backend.app.integrations.llm.types import LlmRequest, LlmResponse
 
@@ -60,9 +64,13 @@ class StubLlmGateway:
 class AnthropicLlmGateway:
     """Native Claude API implementation of the shared LLM gateway."""
 
-    def __init__(self, api_key: str, model: str) -> None:
+    def __init__(self, api_key: str, model: str, verify_ssl: bool = True) -> None:
         self._api_key = api_key
         self._model = model
+        if verify_ssl:
+            self._ssl_context = ssl.create_default_context(cafile=certifi.where())
+        else:
+            self._ssl_context = ssl._create_unverified_context()
 
     def call_llm(self, request: LlmRequest) -> LlmResponse:
         """Call Claude Messages API and normalize text/JSON outputs."""
@@ -97,7 +105,6 @@ class AnthropicLlmGateway:
             payload["output_config"] = {
                 "format": {
                     "type": "json_schema",
-                    "name": "response_schema",
                     "schema": request.output_schema,
                 }
             }
@@ -115,7 +122,11 @@ class AnthropicLlmGateway:
         )
 
         try:
-            with urllib.request.urlopen(http_request) as response:
+            with urllib.request.urlopen(
+                http_request,
+                context=self._ssl_context,
+                timeout=60,
+            ) as response:
                 raw_payload = response.read().decode("utf-8")
         except urllib.error.HTTPError as exc:
             detail = exc.read().decode("utf-8")

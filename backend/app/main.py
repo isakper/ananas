@@ -27,6 +27,7 @@ else:
     llm_gateway = AnthropicLlmGateway(
         api_key=settings.anthropic_api_key,
         model=settings.llm_model,
+        verify_ssl=settings.llm_ssl_verify,
     )
 document_extraction_service = DocumentExtractionService(
     markdown_extractor=MarkdownExtractor(llm_gateway=llm_gateway),

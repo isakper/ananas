@@ -19,6 +19,7 @@ class Settings:
     database_url: str
     anthropic_api_key: str
     llm_model: str
+    llm_ssl_verify: bool
     upload_dir: Path
     max_upload_bytes: int
 
@@ -36,6 +37,7 @@ def get_settings() -> Settings:
         ),
         anthropic_api_key=os.getenv("ANTHROPIC_API_KEY", ""),
         llm_model=os.getenv("LLM_MODEL", "claude-sonnet-4-5"),
+        llm_ssl_verify=os.getenv("LLM_SSL_VERIFY", "true").lower() != "false",
         upload_dir=Path(os.getenv("UPLOAD_DIR", "backend/data/uploads")),
         max_upload_bytes=int(os.getenv("MAX_UPLOAD_BYTES", str(10 * 1024 * 1024))),
     )

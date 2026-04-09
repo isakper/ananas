@@ -1,4 +1,5 @@
 """Shared request and response types for LLM integrations."""
+
 from __future__ import annotations
 
 from dataclasses import dataclass

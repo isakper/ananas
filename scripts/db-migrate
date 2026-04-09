@@ -8,5 +8,6 @@ docker compose up -d postgres
 
 docker compose exec -T postgres psql -U app -d app -v ON_ERROR_STOP=1 -f /migrations/0001_initial_schema.sql
 docker compose exec -T postgres psql -U app -d app -v ON_ERROR_STOP=1 -f /migrations/0002_seed_accounts.sql
+docker compose exec -T postgres psql -U app -d app -v ON_ERROR_STOP=1 -f /migrations/0003_invoice_generation_status.sql
 
 echo "[db-migrate] Migrations applied"
