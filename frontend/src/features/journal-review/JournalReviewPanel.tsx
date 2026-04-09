@@ -1,15 +1,26 @@
 import { useMemo, useState } from 'react'
 
 import { StatusPill } from '../../components/StatusPill'
-import type { InvoiceBundle, JournalEntry, JournalPosting } from '../../lib/types/api'
+import type {
+  Account,
+  InvoiceBundle,
+  JournalEntry,
+  JournalPosting,
+  JournalPostingUpdateInput,
+} from '../../lib/types/api'
 
 interface JournalReviewPanelProps {
+  accounts?: Account[]
   activeAccountIds: Set<string>
   bundle: InvoiceBundle | null
   isApproving: boolean
   isDeclining: boolean
+  isGenerating: boolean
+  isSavingEdits?: boolean
   onApprove: () => Promise<void>
   onDecline: (reason: string) => Promise<void>
+  onGenerate: () => Promise<void>
+  onSaveEdits?: (postings: JournalPostingUpdateInput[]) => Promise<void>
 }
 
 function toNumber(value: string): number | null {
@@ -65,8 +76,10 @@ export function JournalReviewPanel({
   bundle,
   isApproving,
   isDeclining,
+  isGenerating,
   onApprove,
   onDecline,
+  onGenerate,
 }: JournalReviewPanelProps) {
   const [declineReason, setDeclineReason] = useState('')
 
@@ -81,7 +94,7 @@ export function JournalReviewPanel({
   if (bundle === null) {
     return (
       <section className="card review-panel">
-        <h2>Journal Review</h2>
+        <h2>Journal Entry Review</h2>
       </section>
     )
   }
@@ -89,7 +102,12 @@ export function JournalReviewPanel({
   if (entry === null) {
     return (
       <section className="card review-panel">
-        <h2>Journal Review</h2>
+        <h2>Journal Entry Review</h2>
+        <div className="decision-panel">
+          <button disabled={isGenerating} onClick={() => void onGenerate()} type="button">
+            {isGenerating ? 'Generating...' : 'Generate suggestion'}
+          </button>
+        </div>
       </section>
     )
   }
@@ -100,19 +118,8 @@ export function JournalReviewPanel({
   return (
     <section className="card review-panel">
       <div className="review-header">
-        <h2>Journal Review</h2>
+        <h2>Journal Entry Review</h2>
         <StatusPill status={entry.status} />
-      </div>
-
-      <div className="totals-grid">
-        <div>
-          <span className="metric-label">Debit total</span>
-          <strong>{formatMoney(entry.total_debit, entry.currency)}</strong>
-        </div>
-        <div>
-          <span className="metric-label">Credit total</span>
-          <strong>{formatMoney(entry.total_credit, entry.currency)}</strong>
-        </div>
       </div>
 
       {approvalViolations.length > 0 ? (
@@ -171,7 +178,6 @@ export function JournalReviewPanel({
           </button>
         </div>
       </div>
-
     </section>
   )
 }

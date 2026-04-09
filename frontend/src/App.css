@@ -82,6 +82,48 @@ h2 {
   align-items: start;
 }
 
+.home-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(220px, 1fr));
+  gap: 1rem;
+}
+
+.home-card {
+  text-align: left;
+  border: 1px solid var(--line-soft);
+  border-radius: 16px;
+  padding: 1.2rem;
+  background: var(--panel-bg);
+  box-shadow: var(--panel-shadow);
+  color: var(--ink-strong);
+  min-height: 140px;
+  animation: rise-in 0.45s ease-out;
+}
+
+.home-card h2 {
+  margin: 0;
+}
+
+.invoice-management-stack {
+  display: grid;
+  gap: 1rem;
+}
+
+.invoice-management-top {
+  display: grid;
+  grid-template-columns: minmax(0, 1.55fr) minmax(320px, 1fr);
+  align-items: start;
+  gap: 1rem;
+}
+
+.invoice-list-panel {
+  max-width: none;
+}
+
+.invoice-list-group + .invoice-list-group {
+  margin-top: 1rem;
+}
+
 .left-column {
   display: grid;
   gap: 1rem;
@@ -224,21 +266,6 @@ input[type='text'],
   color: #7f1430;
 }
 
-.totals-grid {
-  margin-top: 0.85rem;
-  display: grid;
-  grid-template-columns: 1fr 1fr;
-  gap: 0.75rem;
-}
-
-.metric-label {
-  display: block;
-  font-size: 0.78rem;
-  text-transform: uppercase;
-  letter-spacing: 0.08em;
-  color: var(--ink-muted);
-}
-
 .warning-panel {
   margin-top: 0.95rem;
   border: 1px solid rgba(210, 42, 73, 0.35);
@@ -339,6 +366,47 @@ tr:last-child td {
   font-size: 0.78rem;
 }
 
+.history-panel {
+  max-width: 980px;
+}
+
+.history-list {
+  margin-top: 0.9rem;
+  display: grid;
+  gap: 0.9rem;
+}
+
+.history-item {
+  border: 1px solid var(--line-soft);
+  border-radius: 12px;
+  padding: 0.75rem;
+  background: rgba(255, 255, 255, 0.7);
+}
+
+.history-item-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  gap: 0.75rem;
+}
+
+.history-item-header strong {
+  color: var(--ink-strong);
+}
+
+.history-item-header span {
+  color: var(--ink-muted);
+  font-size: 0.85rem;
+}
+
+.history-meta {
+  margin-top: 0.45rem;
+  display: flex;
+  gap: 1rem;
+  color: var(--ink-soft);
+  font-size: 0.9rem;
+}
+
 @keyframes rise-in {
   from {
     opacity: 0;
@@ -365,7 +433,11 @@ tr:last-child td {
     grid-template-columns: 1fr;
   }
 
-  .totals-grid {
+  .home-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .invoice-management-top {
     grid-template-columns: 1fr;
   }
 
@@ -380,5 +452,15 @@ tr:last-child td {
 
   .accounts-create-form {
     grid-template-columns: 1fr;
+  }
+
+  .history-item-header {
+    flex-direction: column;
+    align-items: flex-start;
+  }
+
+  .history-meta {
+    flex-direction: column;
+    gap: 0.3rem;
   }
 }

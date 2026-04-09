@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
 
 import './App.css'
+import { StatusPill } from './components/StatusPill'
 import { AccountsPanel } from './features/accounts/AccountsPanel'
 import { InvoiceUploadPanel } from './features/invoice-upload/InvoiceUploadPanel'
 import { JournalReviewPanel } from './features/journal-review/JournalReviewPanel'
@@ -12,17 +13,39 @@ import {
   generateJournalEntry,
   listAccounts,
   removeAccount as removeAccountRequest,
+  updateJournalEntry as updateJournalEntryRequest,
   updateAccount as updateAccountRequest,
   uploadInvoice,
 } from './lib/api/client'
-import type { Account, InvoiceBundle } from './lib/types/api'
+import type { Account, InvoiceBundle, JournalPostingUpdateInput } from './lib/types/api'
 
-type Screen = 'review' | 'accounts'
+type Screen = 'home' | 'invoice-management' | 'invoice-review' | 'company-setup'
+type InvoiceStatus = 'pending' | 'approved' | 'declined'
+
+interface ManagedInvoiceRecord {
+  bundle: InvoiceBundle
+  duplicateOfInvoiceId: string | null
+  hash: string | null
+  updatedAt: string
+}
 
 const ACCOUNT_FALLBACK_STATUS_CODES = new Set([404, 405, 500, 501, 502, 503])
+const INVOICE_MANAGEMENT_STORAGE_KEY = 'invoice-journal-managed-invoices-v1'
 
 function sortAccounts(accounts: Account[]): Account[] {
   return [...accounts].sort((left, right) => left.code - right.code)
+}
+
+function sortManagedInvoices(items: ManagedInvoiceRecord[]): ManagedInvoiceRecord[] {
+  return [...items].sort((left, right) => {
+    const leftTime = new Date(left.updatedAt).valueOf()
+    const rightTime = new Date(right.updatedAt).valueOf()
+    return rightTime - leftTime
+  })
+}
+
+function getInvoiceStatus(bundle: InvoiceBundle): InvoiceStatus {
+  return bundle.journal_entry?.status ?? 'pending'
 }
 
 function toErrorMessage(error: unknown): string {
@@ -44,6 +67,47 @@ function shouldUseLocalAccountFallback(error: unknown): boolean {
 
 function nowIso(): string {
   return new Date().toISOString()
+}
+
+function formatTimestamp(value: string): string {
+  const parsed = new Date(value)
+  if (Number.isNaN(parsed.valueOf())) {
+    return value
+  }
+  return parsed.toLocaleString()
+}
+
+function shortId(value: string): string {
+  if (value.length <= 8) {
+    return value
+  }
+  return value.slice(0, 8)
+}
+
+function loadManagedInvoices(): ManagedInvoiceRecord[] {
+  if (typeof window === 'undefined') {
+    return []
+  }
+  try {
+    const raw = window.localStorage.getItem(INVOICE_MANAGEMENT_STORAGE_KEY)
+    if (raw === null) {
+      return []
+    }
+    const parsed: unknown = JSON.parse(raw)
+    if (!Array.isArray(parsed)) {
+      return []
+    }
+    return sortManagedInvoices(parsed as ManagedInvoiceRecord[])
+  } catch {
+    return []
+  }
+}
+
+function saveManagedInvoices(items: ManagedInvoiceRecord[]): void {
+  if (typeof window === 'undefined') {
+    return
+  }
+  window.localStorage.setItem(INVOICE_MANAGEMENT_STORAGE_KEY, JSON.stringify(items))
 }
 
 function buildDemoAccounts(): Account[] {
@@ -75,24 +139,63 @@ function buildDemoAccounts(): Account[] {
   ])
 }
 
+async function computeFileHash(file: File): Promise<string> {
+  const buffer = await file.arrayBuffer()
+  if (typeof crypto !== 'undefined' && typeof crypto.subtle !== 'undefined') {
+    const digest = await crypto.subtle.digest('SHA-256', buffer)
+    const bytes = Array.from(new Uint8Array(digest))
+    return bytes.map((byte) => byte.toString(16).padStart(2, '0')).join('')
+  }
+  return `${file.name}-${file.size}-${file.lastModified}`
+}
+
 function App() {
-  const [screen, setScreen] = useState<Screen>('review')
-  const [bundle, setBundle] = useState<InvoiceBundle | null>(null)
+  const [screen, setScreen] = useState<Screen>('home')
+  const [managedInvoices, setManagedInvoices] = useState<ManagedInvoiceRecord[]>(() =>
+    loadManagedInvoices(),
+  )
+  const [selectedInvoiceId, setSelectedInvoiceId] = useState<string | null>(null)
   const [accounts, setAccounts] = useState<Account[]>([])
   const [errorMessage, setErrorMessage] = useState<string | null>(null)
-  const [pdfPreviewUrl, setPdfPreviewUrl] = useState<string | null>(null)
+  const [previewUrlsByInvoiceId, setPreviewUrlsByInvoiceId] = useState<Record<string, string>>({})
   const [isLocalAccountsFallback, setIsLocalAccountsFallback] = useState(false)
 
   const [isUploading, setIsUploading] = useState(false)
   const [isGenerating, setIsGenerating] = useState(false)
+  const [isSavingJournalEdits, setIsSavingJournalEdits] = useState(false)
   const [isApproving, setIsApproving] = useState(false)
   const [isDeclining, setIsDeclining] = useState(false)
   const [isLoadingAccounts, setIsLoadingAccounts] = useState(false)
   const [isMutatingAccounts, setIsMutatingAccounts] = useState(false)
 
   const activeAccountIds = useMemo(() => {
-    return new Set(accounts.map((account) => account.id))
+    return new Set(accounts.filter((account) => account.is_active).map((account) => account.id))
   }, [accounts])
+
+  const activeAccounts = useMemo(() => {
+    return accounts.filter((account) => account.is_active)
+  }, [accounts])
+
+  const selectedManagedInvoice = useMemo(() => {
+    if (selectedInvoiceId === null) {
+      return null
+    }
+    return (
+      managedInvoices.find((item) => item.bundle.invoice.id === selectedInvoiceId) ?? null
+    )
+  }, [managedInvoices, selectedInvoiceId])
+
+  const selectedBundle = selectedManagedInvoice?.bundle ?? null
+  const selectedPreviewUrl =
+    selectedInvoiceId === null ? null : (previewUrlsByInvoiceId[selectedInvoiceId] ?? null)
+
+  const pendingInvoices = useMemo(() => {
+    return managedInvoices.filter((item) => getInvoiceStatus(item.bundle) === 'pending')
+  }, [managedInvoices])
+
+  const processedInvoices = useMemo(() => {
+    return managedInvoices.filter((item) => getInvoiceStatus(item.bundle) !== 'pending')
+  }, [managedInvoices])
 
   const refreshAccounts = useCallback(async () => {
     setIsLoadingAccounts(true)
@@ -117,37 +220,112 @@ function App() {
   }, [refreshAccounts])
 
   useEffect(() => {
+    if (selectedInvoiceId === null) {
+      return
+    }
+    const stillExists = managedInvoices.some(
+      (item) => item.bundle.invoice.id === selectedInvoiceId,
+    )
+    if (!stillExists) {
+      setSelectedInvoiceId(null)
+    }
+  }, [managedInvoices, selectedInvoiceId])
+
+  useEffect(() => {
+    saveManagedInvoices(managedInvoices)
+  }, [managedInvoices])
+
+  useEffect(() => {
     return () => {
-      if (pdfPreviewUrl !== null) {
-        URL.revokeObjectURL(pdfPreviewUrl)
+      for (const url of Object.values(previewUrlsByInvoiceId)) {
+        URL.revokeObjectURL(url)
       }
     }
-  }, [pdfPreviewUrl])
+  }, [previewUrlsByInvoiceId])
 
-  async function handleUpload(file: File) {
+  async function handleUploadFiles(files: File[]) {
     setErrorMessage(null)
     setIsUploading(true)
 
     try {
-      const result = await uploadInvoice(file)
-      setBundle(result)
+      const uploadedRecords: ManagedInvoiceRecord[] = []
+      const previewByInvoiceId: Record<string, string> = {}
+      const failures: string[] = []
+      const existingByHash = new Map<string, string>(
+        managedInvoices
+          .filter((item): item is ManagedInvoiceRecord & { hash: string } => item.hash !== null)
+          .map((item) => [item.hash, item.bundle.invoice.id]),
+      )
 
-      const nextUrl = URL.createObjectURL(file)
-      setPdfPreviewUrl((current) => {
-        if (current !== null) {
-          URL.revokeObjectURL(current)
+      for (const file of files) {
+        try {
+          const fileHash = await computeFileHash(file)
+          const duplicateOfInvoiceId = existingByHash.get(fileHash) ?? null
+          const result = await uploadInvoice(file)
+          const updatedAt = nowIso()
+          const record: ManagedInvoiceRecord = {
+            bundle: result,
+            duplicateOfInvoiceId,
+            hash: fileHash,
+            updatedAt,
+          }
+          uploadedRecords.push(record)
+          existingByHash.set(fileHash, result.invoice.id)
+          previewByInvoiceId[result.invoice.id] = URL.createObjectURL(file)
+        } catch (error) {
+          failures.push(`${file.name}: ${toErrorMessage(error)}`)
         }
-        return nextUrl
-      })
-    } catch (error) {
-      setErrorMessage(toErrorMessage(error))
+      }
+
+      if (uploadedRecords.length > 0) {
+        setManagedInvoices((current) => {
+          const uploadedIds = new Set(uploadedRecords.map((item) => item.bundle.invoice.id))
+          const withoutDuplicates = current.filter(
+            (item) => !uploadedIds.has(item.bundle.invoice.id),
+          )
+          return sortManagedInvoices([...uploadedRecords, ...withoutDuplicates])
+        })
+        setSelectedInvoiceId(null)
+
+        setPreviewUrlsByInvoiceId((current) => {
+          const next = { ...current }
+          for (const [invoiceId, url] of Object.entries(previewByInvoiceId)) {
+            const previous = current[invoiceId]
+            if (previous !== undefined) {
+              URL.revokeObjectURL(previous)
+            }
+            next[invoiceId] = url
+          }
+          return next
+        })
+      }
+
+      if (failures.length > 0) {
+        const header =
+          uploadedRecords.length === 0
+            ? 'Upload failed.'
+            : `Uploaded ${uploadedRecords.length} of ${files.length} files.`
+        setErrorMessage(`${header} ${failures.join(' | ')}`)
+      }
     } finally {
       setIsUploading(false)
     }
   }
 
+  function updateManagedBundle(updatedBundle: InvoiceBundle) {
+    setManagedInvoices((current) =>
+      sortManagedInvoices(
+        current.map((item) =>
+          item.bundle.invoice.id === updatedBundle.invoice.id
+            ? { ...item, bundle: updatedBundle, updatedAt: nowIso() }
+            : item,
+        ),
+      ),
+    )
+  }
+
   async function handleGenerate() {
-    if (bundle === null) {
+    if (selectedBundle === null) {
       return
     }
 
@@ -155,8 +333,8 @@ function App() {
     setIsGenerating(true)
 
     try {
-      const result = await generateJournalEntry(bundle.invoice.id)
-      setBundle(result)
+      const result = await generateJournalEntry(selectedBundle.invoice.id)
+      updateManagedBundle(result)
     } catch (error) {
       setErrorMessage(toErrorMessage(error))
     } finally {
@@ -164,9 +342,31 @@ function App() {
     }
   }
 
+  async function handleSaveJournalEdits(postings: JournalPostingUpdateInput[]) {
+    const entryId = selectedBundle?.journal_entry?.id
+    if (entryId === undefined || selectedBundle === null) {
+      return
+    }
+
+    setErrorMessage(null)
+    setIsSavingJournalEdits(true)
+
+    try {
+      const updatedEntry = await updateJournalEntryRequest(entryId, postings)
+      updateManagedBundle({
+        ...selectedBundle,
+        journal_entry: updatedEntry,
+      })
+    } catch (error) {
+      setErrorMessage(toErrorMessage(error))
+    } finally {
+      setIsSavingJournalEdits(false)
+    }
+  }
+
   async function handleApprove() {
-    const entryId = bundle?.journal_entry?.id
-    if (entryId === undefined) {
+    const entryId = selectedBundle?.journal_entry?.id
+    if (entryId === undefined || selectedBundle === null) {
       return
     }
 
@@ -175,15 +375,11 @@ function App() {
 
     try {
       const updatedEntry = await approveJournalEntry(entryId)
-      setBundle((current) => {
-        if (current === null) {
-          return current
-        }
-        return {
-          ...current,
-          journal_entry: updatedEntry,
-        }
+      updateManagedBundle({
+        ...selectedBundle,
+        journal_entry: updatedEntry,
       })
+      setScreen('invoice-management')
     } catch (error) {
       setErrorMessage(toErrorMessage(error))
     } finally {
@@ -192,8 +388,8 @@ function App() {
   }
 
   async function handleDecline(reason: string) {
-    const entryId = bundle?.journal_entry?.id
-    if (entryId === undefined) {
+    const entryId = selectedBundle?.journal_entry?.id
+    if (entryId === undefined || selectedBundle === null) {
       return
     }
 
@@ -202,15 +398,11 @@ function App() {
 
     try {
       const updatedEntry = await declineJournalEntry(entryId, reason)
-      setBundle((current) => {
-        if (current === null) {
-          return current
-        }
-        return {
-          ...current,
-          journal_entry: updatedEntry,
-        }
+      updateManagedBundle({
+        ...selectedBundle,
+        journal_entry: updatedEntry,
       })
+      setScreen('invoice-management')
     } catch (error) {
       setErrorMessage(toErrorMessage(error))
     } finally {
@@ -242,7 +434,11 @@ function App() {
     }
 
     try {
-      const created = await createAccountRequest({ code: input.code, name: input.name, is_active: true })
+      const created = await createAccountRequest({
+        code: input.code,
+        name: input.name,
+        is_active: true,
+      })
       setAccounts((current) => sortAccounts([...current, created]))
       setIsLocalAccountsFallback(false)
     } catch (error) {
@@ -279,7 +475,10 @@ function App() {
     }
 
     try {
-      const updated = await updateAccountRequest(accountId, { code: input.code, name: input.name })
+      const updated = await updateAccountRequest(accountId, {
+        code: input.code,
+        name: input.name,
+      })
       setAccounts((current) =>
         sortAccounts(current.map((account) => (account.id === accountId ? updated : account))),
       )
@@ -328,22 +527,22 @@ function App() {
     <div className="app-shell">
       <header className="topbar">
         <h1>Invoice to Journal Entry</h1>
-        <nav className="tab-row" aria-label="Primary navigation">
-          <button
-            className={screen === 'review' ? 'tab tab--active' : 'tab'}
-            onClick={() => setScreen('review')}
-            type="button"
-          >
-            Review
-          </button>
-          <button
-            className={screen === 'accounts' ? 'tab tab--active' : 'tab'}
-            onClick={() => setScreen('accounts')}
-            type="button"
-          >
-            Chart of Accounts
-          </button>
-        </nav>
+        {screen !== 'home' ? (
+          <div className="tab-row">
+            {screen === 'invoice-review' ? (
+              <button
+                className="button-secondary"
+                onClick={() => setScreen('invoice-management')}
+                type="button"
+              >
+                Invoices
+              </button>
+            ) : null}
+            <button className="button-secondary" onClick={() => setScreen('home')} type="button">
+              Home
+            </button>
+          </div>
+        ) : null}
       </header>
 
       {errorMessage !== null ? (
@@ -352,42 +551,174 @@ function App() {
         </div>
       ) : null}
 
-      {screen === 'review' ? (
-        <main className="review-grid">
-          <div className="left-column">
-            <InvoiceUploadPanel
-              canGenerate={bundle !== null}
-              isGenerating={isGenerating}
-              isUploading={isUploading}
-              onGenerate={handleGenerate}
-              onUpload={handleUpload}
-            />
+      {screen === 'home' ? (
+        <main className="home-grid">
+          <button className="home-card" onClick={() => setScreen('invoice-management')} type="button">
+            <h2>Invoice Management</h2>
+          </button>
+          <button className="home-card" onClick={() => setScreen('company-setup')} type="button">
+            <h2>Company Setup</h2>
+          </button>
+        </main>
+      ) : screen === 'invoice-management' ? (
+        <main className="invoice-management-stack">
+          <section className="invoice-management-top">
+            <section className="card invoice-list-panel">
+              <h2>Invoices</h2>
 
-            <section className="card viewer-panel">
-              <h2>Invoice Viewer</h2>
-              {pdfPreviewUrl === null ? (
-                <p className="muted">No preview</p>
-              ) : (
-                <iframe src={pdfPreviewUrl} title="Uploaded invoice preview" />
-              )}
+              <div className="invoice-list-group">
+                <h3>Pending Review</h3>
+                {pendingInvoices.length === 0 ? (
+                  <p className="muted">No pending invoices.</p>
+                ) : (
+                  <div className="table-wrap">
+                    <table>
+                      <thead>
+                        <tr>
+                          <th>Invoice</th>
+                          <th>Status</th>
+                          <th>Updated</th>
+                          <th>Flag</th>
+                          <th>Action</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {pendingInvoices.map((item) => {
+                          const invoiceId = item.bundle.invoice.id
+                          const status = getInvoiceStatus(item.bundle)
+                          return (
+                            <tr key={invoiceId}>
+                              <td>{item.bundle.invoice.original_filename}</td>
+                              <td>
+                                <StatusPill status={status} />
+                              </td>
+                              <td>{formatTimestamp(item.updatedAt)}</td>
+                              <td>
+                                {item.duplicateOfInvoiceId === null
+                                  ? '-'
+                                  : `Possible duplicate of ${shortId(item.duplicateOfInvoiceId)}`}
+                              </td>
+                              <td>
+                                <button
+                                  className="button-secondary"
+                                  onClick={() => {
+                                    setSelectedInvoiceId(invoiceId)
+                                    setScreen('invoice-review')
+                                  }}
+                                  type="button"
+                                >
+                                  Open
+                                </button>
+                              </td>
+                            </tr>
+                          )
+                        })}
+                      </tbody>
+                    </table>
+                  </div>
+                )}
+              </div>
+
+              <div className="invoice-list-group">
+                <h3>Processed Invoices</h3>
+                {processedInvoices.length === 0 ? (
+                  <p className="muted">No processed invoices.</p>
+                ) : (
+                  <div className="table-wrap">
+                    <table>
+                      <thead>
+                        <tr>
+                          <th>Invoice</th>
+                          <th>Status</th>
+                          <th>Updated</th>
+                          <th>Flag</th>
+                          <th>Action</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {processedInvoices.map((item) => {
+                          const invoiceId = item.bundle.invoice.id
+                          const status = getInvoiceStatus(item.bundle)
+                          return (
+                            <tr key={invoiceId}>
+                              <td>{item.bundle.invoice.original_filename}</td>
+                              <td>
+                                <StatusPill status={status} />
+                              </td>
+                              <td>{formatTimestamp(item.updatedAt)}</td>
+                              <td>
+                                {item.duplicateOfInvoiceId === null
+                                  ? '-'
+                                  : `Possible duplicate of ${shortId(item.duplicateOfInvoiceId)}`}
+                              </td>
+                              <td>
+                                <button
+                                  className="button-secondary"
+                                  onClick={() => {
+                                    setSelectedInvoiceId(invoiceId)
+                                    setScreen('invoice-review')
+                                  }}
+                                  type="button"
+                                >
+                                  Open
+                                </button>
+                              </td>
+                            </tr>
+                          )
+                        })}
+                      </tbody>
+                    </table>
+                  </div>
+                )}
+              </div>
             </section>
+            <InvoiceUploadPanel isUploading={isUploading} onUpload={handleUploadFiles} />
+          </section>
+        </main>
+      ) : screen === 'invoice-review' ? (
+        <main>
+          {selectedBundle === null ? (
+            <section className="card">
+              <h2>Invoice Review</h2>
+              <p className="muted">No invoice selected.</p>
+              <div className="button-row">
+                <button
+                  className="button-secondary"
+                  onClick={() => setScreen('invoice-management')}
+                  type="button"
+                >
+                  Back to invoices
+                </button>
+              </div>
+            </section>
+          ) : (
+            <section className="review-grid">
+              <div className="left-column">
+                <section className="card viewer-panel">
+                  <h2>Invoice Viewer</h2>
+                  {selectedPreviewUrl === null ? (
+                    <p className="muted">No preview</p>
+                  ) : (
+                    <iframe src={selectedPreviewUrl} title="Uploaded invoice preview" />
+                  )}
+                </section>
+              </div>
 
-            {bundle?.invoice.extracted_text !== null && bundle?.invoice.extracted_text !== undefined ? (
-              <section className="card extracted-panel">
-                <h2>Extracted Markdown</h2>
-                <pre>{bundle.invoice.extracted_text}</pre>
-              </section>
-            ) : null}
-          </div>
-
-          <JournalReviewPanel
-            activeAccountIds={activeAccountIds}
-            bundle={bundle}
-            isApproving={isApproving}
-            isDeclining={isDeclining}
-            onApprove={handleApprove}
-            onDecline={handleDecline}
-          />
+              <JournalReviewPanel
+                accounts={activeAccounts}
+                activeAccountIds={activeAccountIds}
+                bundle={selectedBundle}
+                isApproving={isApproving}
+                isDeclining={isDeclining}
+                isGenerating={isGenerating}
+                isSavingEdits={isSavingJournalEdits}
+                onApprove={handleApprove}
+                onDecline={handleDecline}
+                onGenerate={handleGenerate}
+                onSaveEdits={handleSaveJournalEdits}
+              />
+            </section>
+          )}
         </main>
       ) : (
         <main>
