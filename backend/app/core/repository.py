@@ -1,4 +1,5 @@
 """Repository methods for invoice and journal-entry workflows."""
+
 from __future__ import annotations
 
 from dataclasses import dataclass
@@ -9,13 +10,8 @@ from uuid import UUID
 
 from psycopg.rows import dict_row
 
-from backend.app.accounting.service import (
-    AccountChoice,
-    PostingAmounts,
-    choose_default_accounts,
-    calculate_totals,
-    is_balanced,
-)
+from backend.app.accounting.service import PostingAmounts, calculate_totals, is_balanced
+from backend.app.accounting.types import SuggestedPosting
 from backend.app.core.db import Database
 from backend.app.core.records import (
     AccountRecord,
@@ -59,72 +55,44 @@ class AppRepository:
                 rows = cur.fetchall()
         return [_account_from_row(row) for row in rows]
 
-    def create_invoice_with_stub_entry(
+    def create_invoice(
         self,
         original_filename: str,
         mime_type: str,
         file_path: str,
-        extracted_text: str | None,
-    ) -> InvoiceBundleRecord:
-        """Create invoice plus pending stub journal entry."""
+    ) -> InvoiceRecord:
+        """Create and return an uploaded invoice row."""
         with self._database.connection() as conn:
             with conn.cursor(row_factory=dict_row) as cur:
                 cur.execute(
                     """
                     INSERT INTO invoices (original_filename, mime_type, file_path, extracted_text)
-                    VALUES (%s, %s, %s, %s)
+                    VALUES (%s, %s, %s, NULL)
                     RETURNING id, original_filename, mime_type, file_path, extracted_text, created_at, updated_at
                     """,
-                    (original_filename, mime_type, file_path, extracted_text),
+                    (original_filename, mime_type, file_path),
                 )
                 invoice_row = cur.fetchone()
                 if invoice_row is None:
                     raise ValueError("Failed to create invoice")
-                invoice = _invoice_from_row(invoice_row)
+                return _invoice_from_row(invoice_row)
 
-                accounts = self._load_active_account_choices(cur)
-                debit_account, credit_account = choose_default_accounts(accounts)
-                amount = Decimal("1000.00")
-
+    def get_invoice(self, invoice_id: UUID) -> InvoiceRecord | None:
+        """Return invoice row by id."""
+        with self._database.connection() as conn:
+            with conn.cursor(row_factory=dict_row) as cur:
                 cur.execute(
                     """
-                    INSERT INTO journal_entries (invoice_id, status, currency, total_debit, total_credit)
-                    VALUES (%s, 'pending', 'SEK', %s, %s)
-                    RETURNING id, invoice_id, status, currency, total_debit, total_credit, decided_at, decision_reason, created_at, updated_at
+                    SELECT id, original_filename, mime_type, file_path, extracted_text, created_at, updated_at
+                    FROM invoices
+                    WHERE id = %s
                     """,
-                    (invoice.id, amount, amount),
+                    (invoice_id,),
                 )
-                entry_row = cur.fetchone()
-                if entry_row is None:
-                    raise ValueError("Failed to create journal entry")
-                entry_id = _uuid(entry_row["id"])
-
-                posting_inputs = [
-                    PostingCreate(
-                        line_no=1,
-                        account_id=debit_account.id,
-                        account_code_snapshot=debit_account.code,
-                        account_name_snapshot=debit_account.name,
-                        description="Auto-generated debit line (stub)",
-                        debit_amount=amount,
-                        credit_amount=Decimal("0.00"),
-                    ),
-                    PostingCreate(
-                        line_no=2,
-                        account_id=credit_account.id,
-                        account_code_snapshot=credit_account.code,
-                        account_name_snapshot=credit_account.name,
-                        description="Auto-generated credit line (stub)",
-                        debit_amount=Decimal("0.00"),
-                        credit_amount=amount,
-                    ),
-                ]
-                self._insert_postings(cur, entry_id, posting_inputs)
-
-        bundle = self.get_invoice_bundle(invoice.id)
-        if bundle is None:
-            raise ValueError("Failed to load created invoice bundle")
-        return bundle
+                row = cur.fetchone()
+        if row is None:
+            return None
+        return _invoice_from_row(row)
 
     def get_invoice_bundle(self, invoice_id: UUID) -> InvoiceBundleRecord | None:
         """Return invoice and journal entry details for the review screen."""
@@ -153,11 +121,122 @@ class AppRepository:
                 )
                 entry_row = cur.fetchone()
                 if entry_row is None:
-                    return None
+                    return InvoiceBundleRecord(invoice=invoice, journal_entry=None)
                 postings = self._load_postings_for_entry(cur, _uuid(entry_row["id"]))
                 entry = _journal_entry_from_row(entry_row, postings)
 
         return InvoiceBundleRecord(invoice=invoice, journal_entry=entry)
+
+    def save_invoice_markdown(
+        self, invoice_id: UUID, markdown: str
+    ) -> InvoiceRecord | None:
+        """Persist extracted markdown for an existing invoice."""
+        with self._database.connection() as conn:
+            with conn.cursor(row_factory=dict_row) as cur:
+                cur.execute(
+                    """
+                    UPDATE invoices
+                    SET extracted_text = %s
+                    WHERE id = %s
+                    RETURNING id, original_filename, mime_type, file_path, extracted_text, created_at, updated_at
+                    """,
+                    (markdown, invoice_id),
+                )
+                row = cur.fetchone()
+        if row is None:
+            return None
+        return _invoice_from_row(row)
+
+    def replace_suggested_journal_entry(
+        self, invoice_id: UUID, postings: list[SuggestedPosting]
+    ) -> JournalEntryRecord:
+        """Create or replace pending journal suggestion for an invoice."""
+        if len(postings) == 0:
+            raise ValueError("Suggested journal entry requires at least one posting")
+
+        amounts = [
+            PostingAmounts(debit=posting.debit_amount, credit=posting.credit_amount)
+            for posting in postings
+        ]
+        if not is_balanced(amounts):
+            raise ValueError("Suggested journal entry is not balanced")
+        total_debit, total_credit = calculate_totals(amounts)
+
+        with self._database.connection() as conn:
+            with conn.cursor(row_factory=dict_row) as cur:
+                cur.execute(
+                    """
+                    SELECT id
+                    FROM journal_entries
+                    WHERE invoice_id = %s
+                    """,
+                    (invoice_id,),
+                )
+                existing_row = cur.fetchone()
+
+                if existing_row is None:
+                    cur.execute(
+                        """
+                        INSERT INTO journal_entries (
+                            invoice_id,
+                            status,
+                            currency,
+                            total_debit,
+                            total_credit,
+                            decided_at,
+                            decision_reason
+                        )
+                        VALUES (%s, 'pending', 'SEK', %s, %s, NULL, NULL)
+                        RETURNING id, invoice_id, status, currency, total_debit, total_credit, decided_at, decision_reason, created_at, updated_at
+                        """,
+                        (invoice_id, total_debit, total_credit),
+                    )
+                    entry_row = cur.fetchone()
+                    if entry_row is None:
+                        raise ValueError("Failed to create journal entry")
+                    entry_id = _uuid(entry_row["id"])
+                else:
+                    entry_id = _uuid(existing_row["id"])
+                    cur.execute(
+                        """
+                        DELETE FROM journal_postings
+                        WHERE journal_entry_id = %s
+                        """,
+                        (entry_id,),
+                    )
+                    cur.execute(
+                        """
+                        UPDATE journal_entries
+                        SET status = 'pending',
+                            currency = 'SEK',
+                            total_debit = %s,
+                            total_credit = %s,
+                            decided_at = NULL,
+                            decision_reason = NULL
+                        WHERE id = %s
+                        RETURNING id, invoice_id, status, currency, total_debit, total_credit, decided_at, decision_reason, created_at, updated_at
+                        """,
+                        (total_debit, total_credit, entry_id),
+                    )
+                    entry_row = cur.fetchone()
+                    if entry_row is None:
+                        raise ValueError("Failed to update journal entry")
+
+                posting_rows = [
+                    PostingCreate(
+                        line_no=index + 1,
+                        account_id=posting.account_id,
+                        account_code_snapshot=posting.account_code,
+                        account_name_snapshot=posting.account_name,
+                        description=posting.description,
+                        debit_amount=posting.debit_amount,
+                        credit_amount=posting.credit_amount,
+                    )
+                    for index, posting in enumerate(postings)
+                ]
+                self._insert_postings(cur, entry_id, posting_rows)
+                loaded_postings = self._load_postings_for_entry(cur, entry_id)
+                return _journal_entry_from_row(entry_row, loaded_postings)
 
     def decide_journal_entry(
         self, journal_entry_id: UUID, status: str, reason: str | None
@@ -223,27 +302,6 @@ class AppRepository:
                     return None
                 updated_postings = self._load_postings_for_entry(cur, journal_entry_id)
                 return _journal_entry_from_row(updated_row, updated_postings)
-
-    def _load_active_account_choices(
-        self, cur: Any
-    ) -> list[AccountChoice]:
-        cur.execute(
-            """
-            SELECT id, code, name
-            FROM accounts
-            WHERE is_active = TRUE
-            ORDER BY code
-            """
-        )
-        rows = cur.fetchall()
-        return [
-            AccountChoice(
-                id=_uuid(row["id"]),
-                code=_int(row["code"]),
-                name=_str(row["name"]),
-            )
-            for row in rows
-        ]
 
     def _insert_postings(
         self, cur: Any, journal_entry_id: UUID, postings: list[PostingCreate]
@@ -361,9 +419,7 @@ def _journal_entry_from_row(
     decided_at_raw = row["decided_at"]
     decision_reason_raw = row["decision_reason"]
     decided_at = None if decided_at_raw is None else _datetime(decided_at_raw)
-    decision_reason = (
-        None if decision_reason_raw is None else _str(decision_reason_raw)
-    )
+    decision_reason = None if decision_reason_raw is None else _str(decision_reason_raw)
     return JournalEntryRecord(
         id=_uuid(row["id"]),
         invoice_id=_uuid(row["invoice_id"]),

@@ -1,4 +1,5 @@
 """Accounting domain rules used by APIs and repositories."""
+
 from __future__ import annotations
 
 from dataclasses import dataclass

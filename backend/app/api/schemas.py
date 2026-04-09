@@ -1,4 +1,5 @@
 """Pydantic API schemas."""
+
 from __future__ import annotations
 
 from datetime import datetime
@@ -107,13 +108,18 @@ class InvoiceBundleResponse(BaseModel):
     """Invoice + journal entry output model."""
 
     invoice: InvoiceResponse
-    journal_entry: JournalEntryResponse
+    journal_entry: JournalEntryResponse | None
 
     @classmethod
     def from_record(cls, record: InvoiceBundleRecord) -> "InvoiceBundleResponse":
+        journal_entry: JournalEntryResponse | None
+        if record.journal_entry is None:
+            journal_entry = None
+        else:
+            journal_entry = JournalEntryResponse.from_record(record.journal_entry)
         return cls(
             invoice=InvoiceResponse.from_record(record.invoice),
-            journal_entry=JournalEntryResponse.from_record(record.journal_entry),
+            journal_entry=journal_entry,
         )
 
 

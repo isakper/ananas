@@ -1,4 +1,5 @@
 """Typed records for API responses."""
+
 from __future__ import annotations
 
 from dataclasses import dataclass
@@ -70,4 +71,4 @@ class InvoiceBundleRecord:
     """Invoice and its related journal entry."""
 
     invoice: InvoiceRecord
-    journal_entry: JournalEntryRecord
+    journal_entry: JournalEntryRecord | None

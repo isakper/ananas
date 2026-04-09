@@ -1,4 +1,5 @@
 """Invoice API routes."""
+
 from __future__ import annotations
 
 from pathlib import Path
@@ -6,10 +7,18 @@ from uuid import UUID, uuid4
 
 from fastapi import APIRouter, Depends, File, HTTPException, UploadFile, status
 
-from backend.app.api.deps import get_repository, get_settings
+from backend.app.api.deps import (
+    get_journal_generation_workflow,
+    get_repository,
+    get_settings,
+)
 from backend.app.api.schemas import InvoiceBundleResponse
 from backend.app.core.repository import AppRepository
 from backend.app.core.settings import Settings
+from backend.app.workflows.journal_generation import (
+    InvoiceNotFoundError,
+    JournalGenerationWorkflow,
+)
 
 router = APIRouter(tags=["invoices"])
 
@@ -24,7 +33,7 @@ async def create_invoice(
     repository: AppRepository = Depends(get_repository),
     settings: Settings = Depends(get_settings),
 ) -> InvoiceBundleResponse:
-    """Upload an invoice PDF and create a pending suggestion."""
+    """Upload an invoice PDF without generating a suggestion yet."""
     _validate_upload(file)
     payload = await file.read()
     if len(payload) == 0:
@@ -33,15 +42,14 @@ async def create_invoice(
         raise HTTPException(status_code=400, detail="Uploaded file is too large")
 
     upload_path = _persist_file(payload, file.filename or "invoice.pdf", settings)
-    extracted_text = (
-        f"Stub parsed content for {file.filename}" if file.filename is not None else None
-    )
-    bundle = repository.create_invoice_with_stub_entry(
+    invoice = repository.create_invoice(
         original_filename=file.filename or "invoice.pdf",
         mime_type=file.content_type or "application/pdf",
         file_path=str(upload_path),
-        extracted_text=extracted_text,
     )
+    bundle = repository.get_invoice_bundle(invoice.id)
+    if bundle is None:
+        raise HTTPException(status_code=500, detail="Failed to load created invoice")
     return InvoiceBundleResponse.from_record(bundle)
 
 
@@ -53,6 +61,24 @@ def get_invoice(
     bundle = repository.get_invoice_bundle(invoice_id)
     if bundle is None:
         raise HTTPException(status_code=404, detail="Invoice not found")
+    return InvoiceBundleResponse.from_record(bundle)
+
+
+@router.post(
+    "/invoices/{invoice_id}/generate",
+    response_model=InvoiceBundleResponse,
+)
+def generate_invoice_journal_entry(
+    invoice_id: UUID,
+    workflow: JournalGenerationWorkflow = Depends(get_journal_generation_workflow),
+) -> InvoiceBundleResponse:
+    """Generate or regenerate a suggested journal entry for an invoice."""
+    try:
+        bundle = workflow.run(invoice_id=invoice_id)
+    except InvoiceNotFoundError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
     return InvoiceBundleResponse.from_record(bundle)
 
 
