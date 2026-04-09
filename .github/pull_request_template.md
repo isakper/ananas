@@ -5,9 +5,9 @@
 
 ## Validation
 - [ ] Format/lint/typecheck completed (see `docs/CHECKS.md`)
-- [ ] Unit tests run (see `docs/TESTING.md`)
-- [ ] Build completed (see `docs/CHECKS.md`)
-- [ ] Manual checks completed (see `docs/CHECKS.md`)
+- [ ] Automated tests run when applicable
+- [ ] Build completed when applicable
+- [ ] Manual checks completed when applicable
 
 ## Docs
 - [ ] Relevant docs under `docs/` updated (or not needed)

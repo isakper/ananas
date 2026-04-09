@@ -1,6 +1,6 @@
 # Doc Integrity Policy
 
-Last reviewed: 2026-02-23
+Last reviewed: 2026-04-09
 
 ## Purpose
 This policy defines the minimum doc structure and integrity rules enforced by doc-lint.
@@ -10,14 +10,12 @@ This policy defines the minimum doc structure and integrity rules enforced by do
 - `ARCHITECTURE.md`
 - `docs/PLANS.md`
 - `docs/CHECKS.md`
-- `docs/TESTING.md`
 - `docs/CODE_STANDARDS.md`
-- `docs/SECURITY.md`
-- `docs/RELIABILITY.md`
+- `docs/FRONTEND.md`
 
-## Required indexes (v1)
-- `docs/design-docs/index.md` links to every `docs/design-docs/*.md` file except itself.
-- `docs/product-specs/index.md` links to every `docs/product-specs/*.md` file except itself.
+## Optional indexes (v1)
+- If `docs/design-docs/` exists, `docs/design-docs/index.md` must link to every `docs/design-docs/*.md` file except itself.
+- If `docs/product-specs/` exists, `docs/product-specs/index.md` must link to every `docs/product-specs/*.md` file except itself.
 
 ## Link integrity (v1)
 - Markdown links to repo files must resolve (relative paths only).
@@ -34,13 +32,7 @@ Docs that describe high-drift behavior must include a freshness marker:
 
 Tracked docs:
 - `ARCHITECTURE.md`
-- `docs/DESIGN.md`
 - `docs/FRONTEND.md`
-- `docs/PRODUCT_SENSE.md`
-- `docs/QUALITY_SCORE.md`
-- `docs/RELIABILITY.md`
-- `docs/SECURITY.md`
-- `docs/TESTING.md`
 - `docs/CODE_STANDARDS.md`
 - `docs/CHECKS.md`
 - `docs/PLANS.md`
