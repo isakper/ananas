@@ -16,6 +16,33 @@ Last reviewed: 2026-04-09
 - TypeScript gives helpful guardrails without forcing a complex architecture.
 - Vite keeps the setup light and fast.
 
+## Local Runtime Scope
+
+- Frontend support is local-only for this exercise.
+- We only target running through the Vite dev server against a local backend.
+- We do not maintain separate dev/prod frontend behavior in this repo.
+
+## Setup
+
+1. Verify tooling:
+- Node.js `20.x`
+- npm `10.x` or later
+
+2. Frontend scaffold in this repo was created with:
+```bash
+npm create vite@latest frontend -- --template react-ts
+```
+
+3. Install dependencies:
+```bash
+npm --prefix frontend install
+```
+
+4. Run locally:
+```bash
+npm --prefix frontend run dev
+```
+
 ## Scope
 
 The frontend only needs to do a few things well:
@@ -34,8 +61,31 @@ Avoid adding complexity that does not directly help the demo.
 - `frontend/src/App.tsx`: top-level screen layout
 - `frontend/src/features/invoice-upload/`: upload form and ingestion status
 - `frontend/src/features/journal-review/`: journal posting table and approve/decline actions
+- `frontend/src/features/accounts/`: chart-of-accounts list and management actions
 - `frontend/src/lib/api/`: typed API calls to the backend
 - `frontend/src/components/`: small reusable UI pieces
+
+## API Contract For Frontend (Current Backend)
+
+Use the currently implemented endpoints in the backend:
+
+- `POST /invoices`: upload PDF and create invoice record
+- `POST /invoices/{invoice_id}/generate`: generate or regenerate suggested journal entry
+- `GET /invoices/{invoice_id}`: fetch invoice and related journal entry
+- `POST /journal-entries/{journal_entry_id}/approve`: approve pending entry
+- `POST /journal-entries/{journal_entry_id}/decline`: decline entry (`{ "reason": "..." }`)
+- `GET /accounts`: list chart-of-accounts entries
+
+Notes:
+
+- Account create/edit/delete endpoints are not implemented yet; the frontend should reflect that gracefully.
+- Amount fields in API responses are decimal-like JSON values and should be handled as strings in frontend types.
+
+## Local Networking
+
+- Keep frontend network calls in `frontend/src/lib/api/`.
+- Prefer relative API paths (for example `/invoices`) and use a Vite proxy to `http://127.0.0.1:8000` for local runs.
+- Avoid direct database or file-system coupling from the frontend.
 
 ## Conventions
 

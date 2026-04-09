@@ -9,19 +9,20 @@ This doc defines the standard local validation loop before opening a PR.
 
 - Backend: Python 3.11 + FastAPI
 - Frontend: React + TypeScript + Vite
-- Frontend runtime/tooling: Node.js
+- Frontend runtime/tooling: Node.js + npm
 - Local persistence: PostgreSQL
 
-Some commands below are the target workflow for the scaffold we are building, not commands that already exist in the repo yet.
+These commands reflect the current repository layout.
 
 ## Target canonical commands
 
 - Format: `poetry run black .`
 - Lint: `scripts/lint-architecture`
-- Typecheck: backend via `poetry run mypy .`; frontend via `npm run build` or `npm run typecheck` once scaffolded
+- Typecheck: backend via `poetry run mypy .`; frontend via `npm --prefix frontend run build`
+- Frontend lint: `npm --prefix frontend run lint`
 - Unit tests: `poetry run pytest`
-- Build: frontend via `npm run build`
-- Run locally: backend via `poetry run uvicorn backend.app.main:app --reload`; frontend via `npm run dev`
+- Build: frontend via `npm --prefix frontend run build`
+- Run locally: backend via `poetry run uvicorn backend.app.main:app --reload`; frontend via `npm --prefix frontend run dev`
 
 ## Suggested sequence (before commit / PR)
 1. Format
@@ -31,14 +32,16 @@ Some commands below are the target workflow for the scaffold we are building, no
 5. Run locally + manual checks (below)
 
 ## Run locally
-Add the standard “run it” command and required env vars/secrets setup.
+Standard local workflow:
 
 - Database:
 - `scripts/db-up` to start Postgres via Docker Compose
 - `scripts/db-migrate` to apply schema + account seed data
 - `scripts/db-down` to stop Postgres
+- Frontend setup:
+- `npm --prefix frontend install`
 - Backend command: `poetry run uvicorn backend.app.main:app --reload`
-- Frontend command: `npm run dev`
+- Frontend command: `npm --prefix frontend run dev`
 - Required env: `ANTHROPIC_API_KEY` and `DATABASE_URL`
 - Seed data: optional sample PDFs for fast manual verification
 - Common troubleshooting: check backend logs first, then browser console/network tab

@@ -59,6 +59,26 @@ poetry run pre-commit run --all-files
 poetry run pytest
 ```
 
+### 4) Set up frontend dependencies
+
+```bash
+npm --prefix frontend install
+```
+
+### 5) Run locally
+
+In separate terminals:
+
+```bash
+scripts/db-up
+scripts/db-migrate
+poetry run uvicorn backend.app.main:app --reload
+```
+
+```bash
+npm --prefix frontend run dev
+```
+
 ## Project Layout
 
 - `backend/`: FastAPI app, extraction logic, and persistence

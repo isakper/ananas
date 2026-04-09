@@ -147,6 +147,21 @@ class DeclineRequest(BaseModel):
     reason: str | None = None
 
 
+class JournalPostingUpdateRequest(BaseModel):
+    """Editable posting payload for journal entry updates."""
+
+    account_id: UUID
+    description: str | None = None
+    debit_amount: Decimal
+    credit_amount: Decimal
+
+
+class JournalEntryUpdateRequest(BaseModel):
+    """Payload for replacing posting lines on a pending journal entry."""
+
+    postings: list[JournalPostingUpdateRequest]
+
+
 class HealthResponse(BaseModel):
     """Simple health response."""
 

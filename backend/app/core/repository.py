@@ -35,6 +35,16 @@ class PostingCreate:
     credit_amount: Decimal
 
 
+@dataclass(frozen=True)
+class PostingUpdate:
+    """Input structure for replacing posting lines on a pending entry."""
+
+    account_id: UUID
+    description: str | None
+    debit_amount: Decimal
+    credit_amount: Decimal
+
+
 class AccountConflictError(ValueError):
     """Raised when account uniqueness constraints are violated."""
 
@@ -482,6 +492,115 @@ class AppRepository:
                 updated_postings = self._load_postings_for_entry(cur, journal_entry_id)
                 return _journal_entry_from_row(updated_row, updated_postings)
 
+    def update_pending_journal_entry(
+        self, journal_entry_id: UUID, postings: list[PostingUpdate]
+    ) -> JournalEntryRecord | None:
+        """Replace postings for a pending journal entry and recalculate totals."""
+        if len(postings) == 0:
+            raise ValueError("Journal entry requires at least one posting")
+
+        amounts: list[PostingAmounts] = []
+        for index, posting in enumerate(postings, start=1):
+            debit = posting.debit_amount
+            credit = posting.credit_amount
+            if debit < 0 or credit < 0:
+                raise ValueError(f"Line {index}: amounts must be non-negative")
+            if (debit > 0 and credit > 0) or (debit == 0 and credit == 0):
+                raise ValueError(
+                    f"Line {index}: exactly one of debit or credit must be greater than zero"
+                )
+            amounts.append(PostingAmounts(debit=debit, credit=credit))
+
+        if not is_balanced(amounts):
+            raise ValueError("Journal entry is not balanced")
+        total_debit, total_credit = calculate_totals(amounts)
+
+        with self._database.connection() as conn:
+            with conn.cursor(row_factory=dict_row) as cur:
+                cur.execute(
+                    """
+                    SELECT id, invoice_id, status, currency, total_debit, total_credit, decided_at, decision_reason, created_at, updated_at
+                    FROM journal_entries
+                    WHERE id = %s
+                    """,
+                    (journal_entry_id,),
+                )
+                current_entry_row = cur.fetchone()
+                if current_entry_row is None:
+                    return None
+                if _str(current_entry_row["status"]) != "pending":
+                    raise ValueError("Only pending journal entries can be edited")
+
+                account_ids = list({posting.account_id for posting in postings})
+                cur.execute(
+                    """
+                    SELECT id, code, name
+                    FROM accounts
+                    WHERE id = ANY(%s::uuid[]) AND is_active = TRUE
+                    """,
+                    (account_ids,),
+                )
+                account_rows = cur.fetchall()
+                account_map = {
+                    _uuid(account_row["id"]): account_row
+                    for account_row in account_rows
+                }
+                if len(account_map) != len(account_ids):
+                    raise ValueError(
+                        "Journal entry references missing or inactive accounts"
+                    )
+
+                cur.execute(
+                    """
+                    DELETE FROM journal_postings
+                    WHERE journal_entry_id = %s
+                    """,
+                    (journal_entry_id,),
+                )
+
+                updated_rows: list[PostingCreate] = []
+                for index, posting in enumerate(postings, start=1):
+                    account_row = account_map.get(posting.account_id)
+                    if account_row is None:
+                        raise ValueError(
+                            "Journal entry references missing or inactive accounts"
+                        )
+                    updated_rows.append(
+                        PostingCreate(
+                            line_no=index,
+                            account_id=posting.account_id,
+                            account_code_snapshot=_int(account_row["code"]),
+                            account_name_snapshot=_str(account_row["name"]),
+                            description=posting.description,
+                            debit_amount=posting.debit_amount,
+                            credit_amount=posting.credit_amount,
+                        )
+                    )
+                self._insert_postings(cur, journal_entry_id, updated_rows)
+
+                cur.execute(
+                    """
+                    UPDATE journal_entries
+                    SET total_debit = %s,
+                        total_credit = %s,
+                        status = 'pending',
+                        decision_reason = NULL,
+                        decided_at = NULL
+                    WHERE id = %s
+                    RETURNING id, invoice_id, status, currency, total_debit, total_credit, decided_at, decision_reason, created_at, updated_at
+                    """,
+                    (
+                        total_debit,
+                        total_credit,
+                        journal_entry_id,
+                    ),
+                )
+                updated_row = cur.fetchone()
+                if updated_row is None:
+                    return None
+                updated_postings = self._load_postings_for_entry(cur, journal_entry_id)
+                return _journal_entry_from_row(updated_row, updated_postings)
+
     def _insert_postings(
         self, cur: Any, journal_entry_id: UUID, postings: list[PostingCreate]
     ) -> None:
@@ -525,7 +644,7 @@ class AppRepository:
     def _validate_accounts_for_postings(
         self, cur: Any, postings: list[JournalPostingRecord]
     ) -> None:
-        account_ids = [posting.account_id for posting in postings]
+        account_ids = list({posting.account_id for posting in postings})
         cur.execute(
             """
             SELECT COUNT(*) AS valid_count

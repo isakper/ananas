@@ -90,6 +90,7 @@ def get_invoice_pdf(
         path=file_path,
         media_type=invoice.mime_type,
         filename=invoice.original_filename,
+        content_disposition_type="inline",
     )
 
 

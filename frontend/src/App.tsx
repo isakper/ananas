@@ -31,6 +31,14 @@ interface ManagedInvoiceRecord {
 
 const ACCOUNT_FALLBACK_STATUS_CODES = new Set([404, 405, 500, 501, 502, 503])
 const INVOICE_MANAGEMENT_STORAGE_KEY = 'invoice-journal-managed-invoices-v1'
+const API_BASE_URL = (import.meta.env.VITE_API_BASE_URL ?? '').trim()
+
+function toApiUrl(path: string): string {
+  if (API_BASE_URL === '') {
+    return path
+  }
+  return `${API_BASE_URL}${path}`
+}
 
 function sortAccounts(accounts: Account[]): Account[] {
   return [...accounts].sort((left, right) => left.code - right.code)
@@ -187,7 +195,10 @@ function App() {
 
   const selectedBundle = selectedManagedInvoice?.bundle ?? null
   const selectedPreviewUrl =
-    selectedInvoiceId === null ? null : (previewUrlsByInvoiceId[selectedInvoiceId] ?? null)
+    selectedInvoiceId === null
+      ? null
+      : (previewUrlsByInvoiceId[selectedInvoiceId] ??
+        toApiUrl(`/invoices/${selectedInvoiceId}/pdf`))
 
   const pendingInvoices = useMemo(() => {
     return managedInvoices.filter((item) => getInvoiceStatus(item.bundle) === 'pending')
@@ -367,6 +378,13 @@ function App() {
   async function handleApprove() {
     const entryId = selectedBundle?.journal_entry?.id
     if (entryId === undefined || selectedBundle === null) {
+      return
+    }
+    const duplicateOfInvoiceId = selectedManagedInvoice?.duplicateOfInvoiceId ?? null
+    if (duplicateOfInvoiceId !== null) {
+      setErrorMessage(
+        `Approval blocked: invoice is flagged as duplicate of ${shortId(duplicateOfInvoiceId)}.`,
+      )
       return
     }
 
@@ -705,9 +723,15 @@ function App() {
               </div>
 
               <JournalReviewPanel
+                key={
+                  selectedBundle.journal_entry === null
+                    ? `${selectedBundle.invoice.id}-no-entry`
+                    : `${selectedBundle.journal_entry.id}-${selectedBundle.journal_entry.updated_at}`
+                }
                 accounts={activeAccounts}
                 activeAccountIds={activeAccountIds}
                 bundle={selectedBundle}
+                duplicateOfInvoiceId={selectedManagedInvoice?.duplicateOfInvoiceId ?? null}
                 isApproving={isApproving}
                 isDeclining={isDeclining}
                 isGenerating={isGenerating}
