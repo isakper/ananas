@@ -23,6 +23,7 @@
 
 ## Docs directory map
 - `ARCHITECTURE.md`: High-level system shape, boundaries, and invariants; link out to deeper docs.
+- `docs/product-spec.md`: Product requirements and acceptance criteria for the current build.
 - `docs/FRONTEND.md`: Frontend conventions (structure, state, performance, testing).
 - `docs/PLANS.md`: How to write and track execution plans.
 - `docs/CODE_STANDARDS.md`: Code standards, layering, error-handling, and “taste” rules.

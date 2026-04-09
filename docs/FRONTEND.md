@@ -22,7 +22,8 @@ The frontend only needs to do a few things well:
 
 - accept a PDF upload
 - send the file to the backend
-- show extracted content or structured fields
+- show invoice context and suggested journal postings
+- allow accountant actions to approve or decline the suggestion
 - show loading, success, and error states clearly
 
 Avoid adding complexity that does not directly help the demo.
@@ -31,7 +32,8 @@ Avoid adding complexity that does not directly help the demo.
 
 - `frontend/src/main.tsx`: app bootstrap
 - `frontend/src/App.tsx`: top-level screen layout
-- `frontend/src/features/pdf-upload/`: upload form and result view
+- `frontend/src/features/invoice-upload/`: upload form and ingestion status
+- `frontend/src/features/journal-review/`: journal posting table and approve/decline actions
 - `frontend/src/lib/api/`: typed API calls to the backend
 - `frontend/src/components/`: small reusable UI pieces
 
@@ -40,4 +42,5 @@ Avoid adding complexity that does not directly help the demo.
 - Prefer plain React state and effects before introducing extra state libraries.
 - Keep network calls behind a small API helper instead of scattering `fetch` calls everywhere.
 - Use TypeScript types for request and response shapes shared within the frontend.
+- Keep approval and decline actions explicit and backed by persisted backend state.
 - Keep styling simple and easy to tweak under time pressure.

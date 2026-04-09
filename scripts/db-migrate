@@ -1,0 +1,12 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+repo_root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+cd "$repo_root"
+
+docker compose up -d postgres
+
+docker compose exec -T postgres psql -U app -d app -v ON_ERROR_STOP=1 -f /migrations/0001_initial_schema.sql
+docker compose exec -T postgres psql -U app -d app -v ON_ERROR_STOP=1 -f /migrations/0002_seed_accounts.sql
+
+echo "[db-migrate] Migrations applied"

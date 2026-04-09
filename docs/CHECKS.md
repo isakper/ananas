@@ -10,7 +10,7 @@ This doc defines the standard local validation loop before opening a PR.
 - Backend: Python 3.11 + FastAPI
 - Frontend: React + TypeScript + Vite
 - Frontend runtime/tooling: Node.js
-- Local persistence: SQLite when needed
+- Local persistence: PostgreSQL
 
 Some commands below are the target workflow for the scaffold we are building, not commands that already exist in the repo yet.
 
@@ -33,9 +33,13 @@ Some commands below are the target workflow for the scaffold we are building, no
 ## Run locally
 Add the standard “run it” command and required env vars/secrets setup.
 
+- Database:
+- `scripts/db-up` to start Postgres via Docker Compose
+- `scripts/db-migrate` to apply schema + account seed data
+- `scripts/db-down` to stop Postgres
 - Backend command: `poetry run uvicorn backend.app.main:app --reload`
 - Frontend command: `npm run dev`
-- Required env: backend API key for document processing when the exercise provides one
+- Required env: `ANTHROPIC_API_KEY` and `DATABASE_URL`
 - Seed data: optional sample PDFs for fast manual verification
 - Common troubleshooting: check backend logs first, then browser console/network tab
 
@@ -44,9 +48,12 @@ Keep this short and focused on high-signal flows.
 
 - App starts cleanly (no obvious errors in logs/console)
 - Uploading a valid PDF reaches the backend and returns a result
-- Extracted content renders clearly in the UI
+- Suggested journal entry renders clearly in the UI
 - Invalid or unsupported files produce a useful error message
-- A second upload after the first one still works without refresh
+- Journal entry uses accounts from the provided chart of accounts
+- Approve action updates status and persists it
+- Decline action updates status and persists it
+- Approval is blocked if debits and credits are unbalanced
 - No backend traceback or browser console error appears on the happy path
 
 ## Optional: single entrypoint script

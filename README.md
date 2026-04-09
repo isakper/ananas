@@ -7,10 +7,19 @@ Starter repo for a Python backend and React frontend with a docs-first workflow.
 - Backend: Python 3.11 + FastAPI
 - Frontend: React + TypeScript
 - Frontend tooling: Node.js + Vite
-- Database: SQLite when the exercise needs persistence
+- Database: PostgreSQL
 - Integration style: simple JSON API between frontend and backend
 
-This setup keeps PDF extraction straightforward on the backend and the UI conventional on the frontend.
+This setup keeps PDF extraction straightforward on the backend, supports reliable persistence, and keeps the UI conventional on the frontend.
+
+## Required Product Features
+
+- Upload an invoice PDF from the frontend.
+- Generate a suggested journal entry with an LLM using the provided chart of accounts.
+- Persist the generated journal entry in PostgreSQL.
+- Show the bill and suggested journal entry in the UI.
+- Let the accountant approve or decline the suggested journal entry.
+- Ensure debits and credits are balanced before approval.
 
 ## Quick start
 
@@ -61,6 +70,7 @@ poetry run pytest
 
 - `AGENTS.md`: working agreements for agents
 - `ARCHITECTURE.md`: folder structure and responsibilities
+- `docs/product-spec.md`: required product behavior and acceptance criteria
 - `docs/FRONTEND.md`: frontend stack and conventions
 - `docs/CHECKS.md`: target local commands and manual verification
 - `docs/CODE_STANDARDS.md`: coding rules and change hygiene

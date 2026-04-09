@@ -10,7 +10,7 @@ This document is the system-of-record for how the codebase is structured.
 - Backend: Python 3.11 + FastAPI
 - Frontend: React + TypeScript
 - Frontend tooling: Node.js + Vite
-- Persistence: SQLite when the task needs saved uploads or extracted results
+- Persistence: PostgreSQL for journal entries, invoice metadata, and approval state
 - Integration boundary: REST-style JSON API between frontend and backend
 
 ## Planned Repo Layout
@@ -29,7 +29,7 @@ backend/
     api/
     core/
     documents/
-  data/
+    accounting/
 frontend/
   src/
     main.tsx
@@ -55,41 +55,48 @@ scripts/
 - `backend/app/main.py`: FastAPI entrypoint and top-level app wiring.
 - `backend/app/api/`: HTTP routes, request parsing, response shaping, and dependency injection.
 - `backend/app/core/`: cross-cutting backend setup such as config loading, logging, and database/session wiring.
-- `backend/app/documents/`: the main product domain for upload, extraction, persistence, and result retrieval.
-- `backend/data/`: local-only development data such as the SQLite file or temporary uploaded PDFs when needed.
+- `backend/app/documents/`: upload, PDF extraction, and normalized invoice data.
+- `backend/app/accounting/`: journal entry generation, balancing validation, and approval state transitions.
 
 ### Backend Domain Layout
 
-The first domain should be `backend/app/documents/` and follow this shape:
+`backend/app/documents/` should follow this shape:
 
 - `backend/app/documents/types/`: document models, extraction result shapes, and pure helpers.
 - `backend/app/documents/config/`: domain-specific settings and defaults.
-- `backend/app/documents/repo/`: SQLite access and persistence boundaries.
+- `backend/app/documents/repo/`: persistence boundaries and document retrieval.
 - `backend/app/documents/service/`: extraction orchestration, validation, and business rules.
 - `backend/app/documents/runtime/`: concrete wiring of repo and provider implementations.
 - `backend/app/documents/providers/`: interfaces for external processing dependencies such as LLM-backed extraction.
+
+`backend/app/accounting/` should follow the same layered shape and contain:
+
+- account-mapping logic against the provided chart of accounts
+- journal entry creation and debit/credit balancing checks
+- approve/decline state transitions
 
 ### Frontend Folders
 
 - `frontend/src/main.tsx`: React bootstrap.
 - `frontend/src/App.tsx`: top-level screen composition.
-- `frontend/src/features/document-extraction/`: upload flow, result display, and feature-specific UI state.
+- `frontend/src/features/invoice-upload/`: upload flow and ingestion state.
+- `frontend/src/features/journal-review/`: posting review and approve/decline actions.
 - `frontend/src/components/`: small reusable presentational components.
 - `frontend/src/lib/api/`: typed API client code for backend calls.
 - `frontend/src/lib/types/`: shared frontend-only TypeScript types if they do not belong to a single feature.
 
 ### Data And Persistence
 
-- Default local persistence is SQLite.
-- Prefer a configurable `DATABASE_URL`, with a local default pointing to a SQLite file under `backend/data/`.
+- Default local persistence is PostgreSQL.
+- Use a configurable `DATABASE_URL`, with local development pointing to a local Postgres instance.
 - Keep schema and persistence logic in backend repo/runtime layers rather than scattering SQL in route handlers.
-- Do not commit populated local database files or uploaded document artifacts.
+- Do not commit database dumps or uploaded invoice artifacts.
 
 ## Implementation Bias
 
 - Prefer a simple split between frontend and backend over a full-stack framework.
 - Keep the happy path synchronous unless the task clearly requires background jobs.
-- Start with SQLite or in-memory storage before introducing heavier infrastructure.
+- Keep a single Postgres database with simple tables rather than adding extra infrastructure.
 - Keep routes thin and move extraction logic into the `documents/service` layer quickly.
 
 ## Domain Layering Model
@@ -118,10 +125,20 @@ Within a business domain, code should mostly depend “forward” through this s
 ## Current Architecture Rules
 
 - Keep API routes thin.
-- Keep extraction and persistence behavior in the `documents` domain.
+- Keep extraction behavior in the `documents` domain.
+- Keep journal creation, balancing, and approval behavior in the `accounting` domain.
 - Keep database access out of route handlers.
 - Keep frontend networking inside `frontend/src/lib/api/` or feature-local wrappers.
 - Add more folders only when the code volume justifies them.
+
+## Required Feature Scope
+
+- Upload invoice PDF.
+- Generate suggested journal entry with LLM account mapping.
+- Persist suggested entry and approval status in Postgres.
+- Render both invoice context and postings in the UI.
+- Support explicit approve and decline actions.
+- Prevent approval if total debits and credits are not balanced.
 
 ## Architecture Lint
 There is a stub linter entrypoint at `scripts/lint-architecture`. We can tighten lint rules later when the real folder structure exists.
