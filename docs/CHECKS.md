@@ -12,7 +12,7 @@ This doc defines the standard local validation loop before opening a PR.
 - Frontend runtime/tooling: Node.js
 - Local persistence: SQLite when needed
 
-Some commands below are the target workflow for the scaffold we are about to build, not commands that already exist in this bare template.
+Some commands below are the target workflow for the scaffold we are building, not commands that already exist in the repo yet.
 
 ## Target canonical commands
 

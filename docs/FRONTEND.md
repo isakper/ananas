@@ -11,8 +11,8 @@ Last reviewed: 2026-04-09
 
 ## Why This Stack
 
-- It is the safest mainstream option for a short interview build.
-- React is common enough that both you and the interviewer can follow it.
+- It is a safe mainstream option for a small product UI.
+- React is common enough that contributors can follow it easily.
 - TypeScript gives helpful guardrails without forcing a complex architecture.
 - Vite keeps the setup light and fast.
 

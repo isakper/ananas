@@ -20,4 +20,4 @@ Last reviewed: 2026-04-09
 ## Operational hygiene
 - Keep secrets out of source control and logs.
 - Make failure modes explicit and actionable.
-- Prefer low-boilerplate local dependencies during interview prep.
+- Prefer low-boilerplate local dependencies unless extra infrastructure clearly pays for itself.

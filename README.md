@@ -10,7 +10,7 @@ Template repo for a docs-first, agent-friendly workflow.
 - Database: SQLite when the exercise needs persistence
 - Integration style: simple JSON API between frontend and backend
 
-This setup is optimized for interview speed and clarity. Python keeps PDF extraction fast to implement, while React + TypeScript keeps the UI conventional and easy for an agent to scaffold.
+This setup keeps PDF extraction straightforward on the backend and the UI conventional on the frontend.
 
 ## Quick start
 
