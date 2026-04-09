@@ -33,20 +33,28 @@ bootstrap_legacy_migrations() {
   fi
 
   if ! migration_recorded "0002_seed_accounts.sql"; then
-    local has_seed
-    has_seed="$(run_psql -Atq -c "SELECT EXISTS(SELECT 1 FROM accounts WHERE code = 1930);")"
-    if [[ "$has_seed" == "t" ]]; then
-      mark_migration "0002_seed_accounts.sql"
-      echo "[db-migrate-direct] Bootstrapped 0002_seed_accounts.sql"
+    local accounts_table_exists
+    accounts_table_exists="$(run_psql -Atq -c "SELECT to_regclass('public.accounts') IS NOT NULL;")"
+    if [[ "$accounts_table_exists" == "t" ]]; then
+      local has_seed
+      has_seed="$(run_psql -Atq -c "SELECT EXISTS(SELECT 1 FROM accounts WHERE code = 1930);")"
+      if [[ "$has_seed" == "t" ]]; then
+        mark_migration "0002_seed_accounts.sql"
+        echo "[db-migrate-direct] Bootstrapped 0002_seed_accounts.sql"
+      fi
     fi
   fi
 
   if ! migration_recorded "0003_invoice_generation_status.sql"; then
-    local has_generation_status
-    has_generation_status="$(run_psql -Atq -c "SELECT EXISTS(SELECT 1 FROM information_schema.columns WHERE table_schema = 'public' AND table_name = 'invoices' AND column_name = 'generation_status');")"
-    if [[ "$has_generation_status" == "t" ]]; then
-      mark_migration "0003_invoice_generation_status.sql"
-      echo "[db-migrate-direct] Bootstrapped 0003_invoice_generation_status.sql"
+    local invoices_table_exists
+    invoices_table_exists="$(run_psql -Atq -c "SELECT to_regclass('public.invoices') IS NOT NULL;")"
+    if [[ "$invoices_table_exists" == "t" ]]; then
+      local has_generation_status
+      has_generation_status="$(run_psql -Atq -c "SELECT EXISTS(SELECT 1 FROM information_schema.columns WHERE table_schema = 'public' AND table_name = 'invoices' AND column_name = 'generation_status');")"
+      if [[ "$has_generation_status" == "t" ]]; then
+        mark_migration "0003_invoice_generation_status.sql"
+        echo "[db-migrate-direct] Bootstrapped 0003_invoice_generation_status.sql"
+      fi
     fi
   fi
 }

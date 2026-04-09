@@ -31,6 +31,9 @@ interface ManagedInvoiceRecord {
   updatedAt: string
 }
 
+const RETRYABLE_STATUS_CODES = new Set([502, 503, 504])
+const TRANSIENT_RETRY_ATTEMPTS = 8
+const TRANSIENT_RETRY_DELAY_MS = 500
 const API_BASE_URL = (import.meta.env.VITE_API_BASE_URL ?? '').trim()
 
 function toApiUrl(path: string): string {
@@ -64,6 +67,34 @@ function toErrorMessage(error: unknown): string {
     return error.message
   }
   return 'Unexpected error. Check backend logs for details.'
+}
+
+function isRetryableRequestError(error: unknown): boolean {
+  if (error instanceof ApiError) {
+    return RETRYABLE_STATUS_CODES.has(error.statusCode)
+  }
+  return error instanceof TypeError
+}
+
+function wait(milliseconds: number): Promise<void> {
+  return new Promise((resolve) => {
+    setTimeout(resolve, milliseconds)
+  })
+}
+
+async function withTransientRetries<T>(operation: () => Promise<T>): Promise<T> {
+  let attempt = 0
+  while (true) {
+    try {
+      return await operation()
+    } catch (error) {
+      attempt += 1
+      if (!isRetryableRequestError(error) || attempt >= TRANSIENT_RETRY_ATTEMPTS) {
+        throw error
+      }
+      await wait(TRANSIENT_RETRY_DELAY_MS)
+    }
+  }
 }
 
 function nowIso(): string {
@@ -146,8 +177,9 @@ function App() {
   const refreshAccounts = useCallback(async () => {
     setIsLoadingAccounts(true)
     try {
-      const result = await listAccounts()
+      const result = await withTransientRetries(() => listAccounts())
       setAccounts(sortAccounts(result))
+      setErrorMessage(null)
     } catch (error) {
       setErrorMessage(toErrorMessage(error))
     } finally {
@@ -157,10 +189,10 @@ function App() {
 
   const refreshInvoices = useCallback(async () => {
     try {
-      const invoices = await listInvoices()
-      const bundles = await Promise.all(
-        invoices.map(async (invoice) => getInvoice(invoice.id)),
-      )
+      const bundles = await withTransientRetries(async () => {
+        const invoices = await listInvoices()
+        return Promise.all(invoices.map(async (invoice) => getInvoice(invoice.id)))
+      })
       setManagedInvoices((current) => {
         const metaByInvoiceId = new Map(
           current.map((item) => [
@@ -182,6 +214,19 @@ function App() {
           }
         })
         return sortManagedInvoices(mapped)
+      })
+      setErrorMessage((current) => {
+        if (current === null) {
+          return null
+        }
+        if (
+          current.includes('Request failed (502)') ||
+          current.includes('Request failed (503)') ||
+          current.includes('Request failed (504)')
+        ) {
+          return null
+        }
+        return current
       })
     } catch (error) {
       setErrorMessage(toErrorMessage(error))
