@@ -27,7 +27,11 @@ def test_policy_parsing_has_required_docs() -> None:
 
 
 def test_optional_index_is_skipped_for_missing_directory(tmp_path: Path) -> None:
-    """Optional index checks should be skipped when the folder does not exist."""
+    """Optional index checks should be skipped when the folder does not exist.
+
+    Args:
+        tmp_path: Temporary directory fixture from pytest.
+    """
     index_path = tmp_path / "index.md"
     directory = tmp_path / "missing-dir"
     assert doc_lint.check_optional_index(index_path, directory) == []

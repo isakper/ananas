@@ -272,7 +272,9 @@ def check_optional_index(index_path: Path, directory: Path) -> list[LintError]:
     if not directory.exists():
         return []
     if not index_path.exists():
-        return [LintError(index_path, f"Missing index file: {index_path.relative_to(ROOT)}")]
+        return [
+            LintError(index_path, f"Missing index file: {index_path.relative_to(ROOT)}")
+        ]
     return check_index(index_path, directory)
 
 
