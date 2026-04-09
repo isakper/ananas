@@ -39,6 +39,13 @@ Response:
 
 ## Invoices
 
+- `GET /invoices`
+
+Behavior:
+
+- Returns invoice history ordered by newest first.
+- Includes generation status fields for UI polling/list rendering.
+
 - `POST /invoices` (multipart form-data with `file`)
 
 Behavior:
@@ -72,6 +79,13 @@ Response:
 Response:
 
 - Returns invoice and current suggestion (or `journal_entry = null` before generation).
+
+- `GET /invoices/{invoice_id}/pdf`
+
+Behavior:
+
+- Returns the original uploaded PDF file.
+- Useful for rendering inside the review screen.
 
 - `POST /invoices/{invoice_id}/generate`
 

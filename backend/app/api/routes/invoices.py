@@ -6,13 +6,14 @@ from pathlib import Path
 from uuid import UUID, uuid4
 
 from fastapi import APIRouter, Depends, File, HTTPException, UploadFile, status
+from fastapi.responses import FileResponse
 
 from backend.app.api.deps import (
     get_journal_generation_workflow,
     get_repository,
     get_settings,
 )
-from backend.app.api.schemas import InvoiceBundleResponse
+from backend.app.api.schemas import InvoiceBundleResponse, InvoiceResponse
 from backend.app.core.repository import AppRepository
 from backend.app.core.settings import Settings
 from backend.app.workflows.journal_generation import (
@@ -62,6 +63,34 @@ def get_invoice(
     if bundle is None:
         raise HTTPException(status_code=404, detail="Invoice not found")
     return InvoiceBundleResponse.from_record(bundle)
+
+
+@router.get("/invoices", response_model=list[InvoiceResponse])
+def list_invoices(
+    repository: AppRepository = Depends(get_repository),
+) -> list[InvoiceResponse]:
+    """List uploaded invoices for history and navigation."""
+    records = repository.list_invoices()
+    return [InvoiceResponse.from_record(record) for record in records]
+
+
+@router.get("/invoices/{invoice_id}/pdf")
+def get_invoice_pdf(
+    invoice_id: UUID,
+    repository: AppRepository = Depends(get_repository),
+) -> FileResponse:
+    """Serve the original uploaded invoice PDF."""
+    invoice = repository.get_invoice(invoice_id)
+    if invoice is None:
+        raise HTTPException(status_code=404, detail="Invoice not found")
+    file_path = Path(invoice.file_path)
+    if not file_path.is_file():
+        raise HTTPException(status_code=404, detail="Invoice PDF not found")
+    return FileResponse(
+        path=file_path,
+        media_type=invoice.mime_type,
+        filename=invoice.original_filename,
+    )
 
 
 @router.post(

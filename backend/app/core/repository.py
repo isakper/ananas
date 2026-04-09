@@ -104,6 +104,21 @@ class AppRepository:
             return None
         return _invoice_from_row(row)
 
+    def list_invoices(self) -> list[InvoiceRecord]:
+        """List invoices ordered by most recently created first."""
+        with self._database.connection() as conn:
+            with conn.cursor(row_factory=dict_row) as cur:
+                cur.execute(
+                    """
+                    SELECT id, original_filename, mime_type, file_path, extracted_text,
+                           generation_status, generation_error, generated_at, created_at, updated_at
+                    FROM invoices
+                    ORDER BY created_at DESC
+                    """
+                )
+                rows = cur.fetchall()
+        return [_invoice_from_row(row) for row in rows]
+
     def get_invoice_bundle(self, invoice_id: UUID) -> InvoiceBundleRecord | None:
         """Return invoice and journal entry details for the review screen."""
         with self._database.connection() as conn:
