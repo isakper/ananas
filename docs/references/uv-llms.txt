@@ -1,2 +1,0 @@
-Notes for agents:
-- uv-related workflow notes (lockfiles, Python versions, commands) go here.
