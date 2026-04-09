@@ -37,6 +37,12 @@ repos:
     rev: v1.11.2
     hooks:
       - id: mypy
+        language_version: python3.11
+        additional_dependencies:
+          - fastapi==0.115.0
+          - pydantic==2.9.2
+          - psycopg[binary]==3.2.1
+          - python-multipart==0.0.9
   - repo: local
     hooks:
       - id: lint-architecture

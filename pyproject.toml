@@ -8,6 +8,10 @@ packages = []
 
 [tool.poetry.dependencies]
 python = "^3.11"
+fastapi = "^0.115.0"
+uvicorn = "^0.30.0"
+psycopg = { version = "^3.2.0", extras = ["binary"] }
+python-multipart = "^0.0.9"
 
 [tool.poetry.group.dev.dependencies]
 pytest = "^8.2.0"
