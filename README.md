@@ -2,6 +2,16 @@
 
 Template repo for a docs-first, agent-friendly workflow.
 
+## Chosen Stack
+
+- Backend: Python 3.11 + FastAPI
+- Frontend: React + TypeScript
+- Frontend tooling: Node.js + Vite
+- Database: SQLite when the exercise needs persistence
+- Integration style: simple JSON API between frontend and backend
+
+This setup is optimized for interview speed and clarity. Python keeps PDF extraction fast to implement, while React + TypeScript keeps the UI conventional and easy for an agent to scaffold.
+
 ## Quick start
 
 ### 1) Create and activate a virtual environment
@@ -40,25 +50,21 @@ poetry run pre-commit run --all-files
 poetry run pytest
 ```
 
-## Getting started (fill in your project decisions)
+## Recorded decisions
 
-This template is intentionally incomplete. Before real work starts, decide and record:
-
-- Backend framework (FastAPI/Django/Flask/Node/etc).
-- Frontend framework (React/Next/Vue/etc) or “no frontend”.
-- Repo layout (e.g., `backend/`, `frontend/`, `src/`).
-- Runtime versions beyond Python (Node/Go/etc).
-- Package managers (Poetry/uv/pip; pnpm/npm/yarn).
-- Database and migrations (Postgres/SQLite + tool).
-- Deployment target (container/serverless/VM).
-- Environment + secrets strategy (.env, local dev values, CI).
+- Backend framework: FastAPI
+- Frontend framework: React
+- Frontend language: TypeScript
+- Frontend build tool: Vite
+- Repo layout: split `backend/` and `frontend/`
+- Python package manager: Poetry
+- Frontend package manager: npm
+- Database: SQLite for local persistence when needed
 
 Where to record these:
 - `ARCHITECTURE.md` for repo layout, components, and invariants.
 - `docs/FRONTEND.md` for frontend conventions.
 - `docs/CHECKS.md` for canonical commands (format/lint/typecheck/test/build/run).
-- `docs/SECURITY.md` for secrets and auth baseline.
-- `docs/RELIABILITY.md` for observability and ops expectations.
 
 Optional: Playwright MCP for agent UI testing
 This is a per-user setting (lives in `~/.codex/config.toml`), so each developer adds it locally:
@@ -80,7 +86,6 @@ Or use the helper script:
 
 Docs are the source of truth. Start with `AGENTS.md` and `docs/` before coding.
 Checks and local validation are defined in `docs/CHECKS.md`.
-Tests-first expectations live in `docs/TESTING.md`.
 Code standards and layering rules are in `docs/CODE_STANDARDS.md`.
 
 ## How this repo works for agents
@@ -106,7 +111,7 @@ Custom hooks:
 Repo-local hooks are already used (for example `lint-architecture`, `lint-plan`, and `ci-test-local`). When you add more, define them under `repo: local` in `.pre-commit-config.yaml`, point each one at a script in this repo, and document them in this section.
 
 Unit tests:
-Pytest is the default runner. The expectations and philosophy are documented in `docs/TESTING.md`.
+Pytest is the default backend test runner. Frontend tests can be added later if they buy us confidence without slowing down delivery.
 
 Validation loop:
 Expected local checks and manual verification live in `docs/CHECKS.md`.
@@ -115,9 +120,7 @@ Expected local checks and manual verification live in `docs/CHECKS.md`.
 
 `ARCHITECTURE.md`: system shape and invariants.
 `docs/`: deeper guides and templates.
-`docs/design-docs/`: design decisions.
 `docs/exec-plans/`: execution plans.
-`docs/product-specs/`: product specs.
 
 ## Common tasks
 

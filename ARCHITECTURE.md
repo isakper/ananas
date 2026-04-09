@@ -1,9 +1,30 @@
 # Architecture
 
-Last reviewed: 2026-02-23
+Last reviewed: 2026-04-09
 
 
 This document is the system-of-record for how the codebase is structured.
+
+## Chosen Stack
+
+- Backend: Python 3.11 + FastAPI
+- Frontend: React + TypeScript
+- Frontend tooling: Node.js + Vite
+- Persistence: SQLite when the task needs saved uploads or extracted results
+- Integration boundary: REST-style JSON API between frontend and backend
+
+## Planned Repo Layout
+
+- `backend/`: FastAPI application, extraction logic, persistence, and service wiring
+- `frontend/`: React application, API client, upload flow, and result rendering
+- `docs/`: project decisions, checks, and execution plans
+- `tests/`: backend-focused automated tests
+
+## Interview Bias
+
+- Prefer a simple split between frontend and backend over a full-stack framework.
+- Keep the happy path synchronous unless the task clearly requires background jobs.
+- Start with SQLite or in-memory storage before introducing heavier infrastructure.
 
 ## Goals
 - Keep the architecture legible to both humans and agents.
@@ -75,7 +96,16 @@ These are deliberately small. If the list grows, move it to a dedicated doc unde
 - Structured logging is used (fields + correlation), with a baseline format documented.
 
 ## Adding A New Domain (Checklist)
-This template does **not** force a single folder layout across all downstream repos. The *default* layout is:
+This repo keeps the layering model, but the immediate working layout is expected to be:
+
+- `backend/app/<domain>/types/`
+- `backend/app/<domain>/config/`
+- `backend/app/<domain>/repo/`
+- `backend/app/<domain>/service/`
+- `backend/app/<domain>/runtime/`
+- `frontend/src/features/<domain>/`
+
+The older template default layout is:
 
 - `src/domains/<domain>/types/`
 - `src/domains/<domain>/config/`
@@ -106,7 +136,10 @@ By default it *does not* enforce rules until configured. Downstream repos should
 See `docs/references/architecture-lint.md` for the contract, config file location, and remediation guidance.
 
 ## Runtime Environments
-Document runtime environments (dev/staging/prod) and any environment-specific wiring here.
+- Local dev is the primary target for the interview setup.
+- Backend runs as a FastAPI app with local environment variables.
+- Frontend runs through the Vite dev server and calls the local backend API.
 
 ## Observability
-Document baseline logging format, metrics, and traces here, plus any required correlation fields.
+- Start with structured backend logs and clear browser/network errors.
+- Avoid adding dedicated observability infrastructure unless the exercise explicitly needs it.
