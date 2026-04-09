@@ -1,0 +1,15 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+database_url="${DATABASE_URL:-postgresql://app:app@postgres:5432/app}"
+
+for _ in {1..60}; do
+  if pg_isready -d "$database_url" >/dev/null 2>&1; then
+    echo "[wait-for-postgres] Postgres is ready"
+    exit 0
+  fi
+  sleep 1
+done
+
+echo "[wait-for-postgres] Postgres did not become ready in time" >&2
+exit 1

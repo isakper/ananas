@@ -19,51 +19,14 @@ class LlmGateway(Protocol):
         """Perform one model call and return normalized response output."""
 
 
-class StubLlmGateway:
-    """Deterministic placeholder for local wiring before real API calls."""
-
-    def call_llm(self, request: LlmRequest) -> LlmResponse:
-        """Return deterministic output for text and JSON request modes."""
-        if request.output_mode == "text":
-            if len(request.attachments) == 0:
-                text = "# Invoice\n\nNo PDF was provided."
-            else:
-                text = (
-                    "# Invoice\n\n"
-                    f"- File: {request.attachments[0].path.name}\n"
-                    "- Supplier: Example Supplier AB\n"
-                    "- Total: 1000.00 SEK\n"
-                )
-            return LlmResponse(text=text, json_payload=None, raw={"stub": True})
-
-        payload = {
-            "postings": [
-                {
-                    "account_code": 6530,
-                    "description": "IT cost",
-                    "debit_amount": "1000.00",
-                    "credit_amount": "0.00",
-                },
-                {
-                    "account_code": 2440,
-                    "description": "Supplier payable",
-                    "debit_amount": "0.00",
-                    "credit_amount": "1000.00",
-                },
-            ]
-        }
-        return LlmResponse(
-            text="",
-            json_payload=payload,
-            raw={"stub": True},
-        )
-
-
 class AnthropicLlmGateway:
     """Native Claude API implementation of the shared LLM gateway."""
 
     def __init__(self, api_key: str, model: str, verify_ssl: bool = True) -> None:
-        self._api_key = api_key
+        key = api_key.strip()
+        if key == "":
+            raise ValueError("ANTHROPIC_API_KEY is required")
+        self._api_key = key
         self._model = model
         if verify_ssl:
             self._ssl_context = ssl.create_default_context()
@@ -72,9 +35,6 @@ class AnthropicLlmGateway:
 
     def call_llm(self, request: LlmRequest) -> LlmResponse:
         """Call Claude Messages API and normalize text/JSON outputs."""
-        if self._api_key.strip() == "":
-            raise ValueError("ANTHROPIC_API_KEY is not configured")
-
         content_blocks = []
         for attachment in request.attachments:
             encoded = base64.b64encode(attachment.path.read_bytes()).decode("utf-8")
@@ -136,9 +96,7 @@ class AnthropicLlmGateway:
             if "CERTIFICATE_VERIFY_FAILED" in reason:
                 raise RuntimeError(
                     "LLM TLS verification failed. Ensure your local trust store "
-                    "includes your company proxy/root CA (for example Zscaler). "
-                    "Only as a temporary local fallback, set LLM_SSL_VERIFY=false "
-                    "in .env."
+                    "includes your company proxy/root CA (for example Zscaler)."
                 ) from exc
             raise RuntimeError(f"LLM call failed: {reason}") from exc
 

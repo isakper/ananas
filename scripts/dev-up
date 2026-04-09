@@ -1,0 +1,11 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+repo_root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+cd "$repo_root"
+
+docker compose up -d --build
+
+echo "[dev-up] Frontend: http://127.0.0.1:${FRONTEND_PORT:-5173}"
+echo "[dev-up] Backend:  http://127.0.0.1:${BACKEND_PORT:-8000}"
+echo "[dev-up] Postgres: localhost:${POSTGRES_PORT:-5433}"

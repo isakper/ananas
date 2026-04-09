@@ -7,7 +7,7 @@ services:
       POSTGRES_USER: app
       POSTGRES_PASSWORD: app
     ports:
-      - "5432:5432"
+      - "${POSTGRES_PORT:-5433}:5432"
     volumes:
       - postgres_data:/var/lib/postgresql/data
       - ./backend/db/migrations:/migrations:ro
@@ -16,6 +16,50 @@ services:
       interval: 5s
       timeout: 5s
       retries: 10
+
+  backend:
+    build:
+      context: .
+      dockerfile: Dockerfile.backend
+    container_name: ananas-backend
+    environment:
+      APP_ENV: development
+      APP_NAME: invoice-journal-entry
+      HOST: 0.0.0.0
+      PORT: 8000
+      DATABASE_URL: postgresql://app:app@postgres:5432/app
+      ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:?ANTHROPIC_API_KEY is required}
+      LLM_MODEL: ${LLM_MODEL:-claude-sonnet-4-5}
+      LLM_SSL_VERIFY: ${LLM_SSL_VERIFY:-true}
+      UPLOAD_DIR: /app/backend/data/uploads
+      MAX_UPLOAD_BYTES: ${MAX_UPLOAD_BYTES:-10485760}
+    ports:
+      - "${BACKEND_PORT:-8000}:8000"
+    depends_on:
+      postgres:
+        condition: service_healthy
+    volumes:
+      - ./:/app
+    command: >
+      bash -lc "scripts/wait-for-postgres
+      && scripts/db-migrate-direct
+      && uvicorn backend.app.main:app --host 0.0.0.0 --port 8000 --reload"
+
+  frontend:
+    build:
+      context: .
+      dockerfile: Dockerfile.frontend
+    container_name: ananas-frontend
+    environment:
+      VITE_PROXY_TARGET: http://backend:8000
+    ports:
+      - "${FRONTEND_PORT:-5173}:5173"
+    depends_on:
+      - backend
+    volumes:
+      - ./frontend:/app/frontend
+      - /app/frontend/node_modules
+    command: npm run dev -- --host 0.0.0.0 --port 5173
 
 volumes:
   postgres_data:

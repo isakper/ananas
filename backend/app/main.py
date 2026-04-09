@@ -15,20 +15,17 @@ from backend.app.core.repository import AppRepository
 from backend.app.core.settings import get_settings
 from backend.app.documents.markdown_extractor import MarkdownExtractor
 from backend.app.documents.service import DocumentExtractionService
-from backend.app.integrations.llm.client import AnthropicLlmGateway, StubLlmGateway
+from backend.app.integrations.llm.client import AnthropicLlmGateway
 from backend.app.workflows.journal_generation import JournalGenerationWorkflow
 
 settings = get_settings()
 database = Database(settings.database_url)
 repository = AppRepository(database)
-if settings.anthropic_api_key.strip() == "":
-    llm_gateway = StubLlmGateway()
-else:
-    llm_gateway = AnthropicLlmGateway(
-        api_key=settings.anthropic_api_key,
-        model=settings.llm_model,
-        verify_ssl=settings.llm_ssl_verify,
-    )
+llm_gateway = AnthropicLlmGateway(
+    api_key=settings.anthropic_api_key,
+    model=settings.llm_model,
+    verify_ssl=settings.llm_ssl_verify,
+)
 document_extraction_service = DocumentExtractionService(
     markdown_extractor=MarkdownExtractor(llm_gateway=llm_gateway),
 )

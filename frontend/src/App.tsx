@@ -10,8 +10,10 @@ import {
   approveJournalEntry,
   createAccount as createAccountRequest,
   declineJournalEntry,
+  getInvoice,
   generateJournalEntry,
   listAccounts,
+  listInvoices,
   removeAccount as removeAccountRequest,
   updateJournalEntry as updateJournalEntryRequest,
   updateAccount as updateAccountRequest,
@@ -29,8 +31,6 @@ interface ManagedInvoiceRecord {
   updatedAt: string
 }
 
-const ACCOUNT_FALLBACK_STATUS_CODES = new Set([404, 405, 500, 501, 502, 503])
-const INVOICE_MANAGEMENT_STORAGE_KEY = 'invoice-journal-managed-invoices-v1'
 const API_BASE_URL = (import.meta.env.VITE_API_BASE_URL ?? '').trim()
 
 function toApiUrl(path: string): string {
@@ -66,13 +66,6 @@ function toErrorMessage(error: unknown): string {
   return 'Unexpected error. Check backend logs for details.'
 }
 
-function shouldUseLocalAccountFallback(error: unknown): boolean {
-  if (error instanceof ApiError) {
-    return ACCOUNT_FALLBACK_STATUS_CODES.has(error.statusCode)
-  }
-  return error instanceof TypeError
-}
-
 function nowIso(): string {
   return new Date().toISOString()
 }
@@ -92,61 +85,6 @@ function shortId(value: string): string {
   return value.slice(0, 8)
 }
 
-function loadManagedInvoices(): ManagedInvoiceRecord[] {
-  if (typeof window === 'undefined') {
-    return []
-  }
-  try {
-    const raw = window.localStorage.getItem(INVOICE_MANAGEMENT_STORAGE_KEY)
-    if (raw === null) {
-      return []
-    }
-    const parsed: unknown = JSON.parse(raw)
-    if (!Array.isArray(parsed)) {
-      return []
-    }
-    return sortManagedInvoices(parsed as ManagedInvoiceRecord[])
-  } catch {
-    return []
-  }
-}
-
-function saveManagedInvoices(items: ManagedInvoiceRecord[]): void {
-  if (typeof window === 'undefined') {
-    return
-  }
-  window.localStorage.setItem(INVOICE_MANAGEMENT_STORAGE_KEY, JSON.stringify(items))
-}
-
-function buildDemoAccounts(): Account[] {
-  return sortAccounts([
-    {
-      id: 'demo-1',
-      code: 1930,
-      name: 'Företagskonto',
-      is_active: true,
-      created_at: '2026-04-09T09:00:00.000Z',
-      updated_at: '2026-04-09T09:00:00.000Z',
-    },
-    {
-      id: 'demo-2',
-      code: 2440,
-      name: 'Leverantörsskulder',
-      is_active: true,
-      created_at: '2026-04-09T09:00:00.000Z',
-      updated_at: '2026-04-09T09:00:00.000Z',
-    },
-    {
-      id: 'demo-3',
-      code: 6530,
-      name: 'IT-tjänster',
-      is_active: true,
-      created_at: '2026-04-09T09:00:00.000Z',
-      updated_at: '2026-04-09T09:00:00.000Z',
-    },
-  ])
-}
-
 async function computeFileHash(file: File): Promise<string> {
   const buffer = await file.arrayBuffer()
   if (typeof crypto !== 'undefined' && typeof crypto.subtle !== 'undefined') {
@@ -159,14 +97,11 @@ async function computeFileHash(file: File): Promise<string> {
 
 function App() {
   const [screen, setScreen] = useState<Screen>('home')
-  const [managedInvoices, setManagedInvoices] = useState<ManagedInvoiceRecord[]>(() =>
-    loadManagedInvoices(),
-  )
+  const [managedInvoices, setManagedInvoices] = useState<ManagedInvoiceRecord[]>([])
   const [selectedInvoiceId, setSelectedInvoiceId] = useState<string | null>(null)
   const [accounts, setAccounts] = useState<Account[]>([])
   const [errorMessage, setErrorMessage] = useState<string | null>(null)
   const [previewUrlsByInvoiceId, setPreviewUrlsByInvoiceId] = useState<Record<string, string>>({})
-  const [isLocalAccountsFallback, setIsLocalAccountsFallback] = useState(false)
 
   const [isUploading, setIsUploading] = useState(false)
   const [isGenerating, setIsGenerating] = useState(false)
@@ -213,22 +148,53 @@ function App() {
     try {
       const result = await listAccounts()
       setAccounts(sortAccounts(result))
-      setIsLocalAccountsFallback(false)
     } catch (error) {
-      if (shouldUseLocalAccountFallback(error)) {
-        setAccounts((current) => (current.length === 0 ? buildDemoAccounts() : current))
-        setIsLocalAccountsFallback(true)
-      } else {
-        setErrorMessage(toErrorMessage(error))
-      }
+      setErrorMessage(toErrorMessage(error))
     } finally {
       setIsLoadingAccounts(false)
+    }
+  }, [])
+
+  const refreshInvoices = useCallback(async () => {
+    try {
+      const invoices = await listInvoices()
+      const bundles = await Promise.all(
+        invoices.map(async (invoice) => getInvoice(invoice.id)),
+      )
+      setManagedInvoices((current) => {
+        const metaByInvoiceId = new Map(
+          current.map((item) => [
+            item.bundle.invoice.id,
+            {
+              duplicateOfInvoiceId: item.duplicateOfInvoiceId,
+              hash: item.hash,
+              updatedAt: item.updatedAt,
+            },
+          ]),
+        )
+        const mapped = bundles.map((bundle) => {
+          const existingMeta = metaByInvoiceId.get(bundle.invoice.id)
+          return {
+            bundle,
+            duplicateOfInvoiceId: existingMeta?.duplicateOfInvoiceId ?? null,
+            hash: existingMeta?.hash ?? null,
+            updatedAt: existingMeta?.updatedAt ?? bundle.invoice.updated_at,
+          }
+        })
+        return sortManagedInvoices(mapped)
+      })
+    } catch (error) {
+      setErrorMessage(toErrorMessage(error))
     }
   }, [])
 
   useEffect(() => {
     void refreshAccounts()
   }, [refreshAccounts])
+
+  useEffect(() => {
+    void refreshInvoices()
+  }, [refreshInvoices])
 
   useEffect(() => {
     if (selectedInvoiceId === null) {
@@ -241,10 +207,6 @@ function App() {
       setSelectedInvoiceId(null)
     }
   }, [managedInvoices, selectedInvoiceId])
-
-  useEffect(() => {
-    saveManagedInvoices(managedInvoices)
-  }, [managedInvoices])
 
   useEffect(() => {
     return () => {
@@ -431,26 +393,6 @@ function App() {
   async function handleCreateAccount(input: { code: number; name: string }) {
     setErrorMessage(null)
     setIsMutatingAccounts(true)
-    const applyLocalCreate = () => {
-      const timestamp = nowIso()
-      const localAccount: Account = {
-        id: `local-${crypto.randomUUID()}`,
-        code: input.code,
-        name: input.name,
-        is_active: true,
-        created_at: timestamp,
-        updated_at: timestamp,
-      }
-      setAccounts((current) => sortAccounts([...current, localAccount]))
-      setIsLocalAccountsFallback(true)
-    }
-
-    if (isLocalAccountsFallback) {
-      applyLocalCreate()
-      setIsMutatingAccounts(false)
-      return
-    }
-
     try {
       const created = await createAccountRequest({
         code: input.code,
@@ -458,13 +400,8 @@ function App() {
         is_active: true,
       })
       setAccounts((current) => sortAccounts([...current, created]))
-      setIsLocalAccountsFallback(false)
     } catch (error) {
-      if (shouldUseLocalAccountFallback(error)) {
-        applyLocalCreate()
-      } else {
-        setErrorMessage(toErrorMessage(error))
-      }
+      setErrorMessage(toErrorMessage(error))
     } finally {
       setIsMutatingAccounts(false)
     }
@@ -473,25 +410,6 @@ function App() {
   async function handleUpdateAccount(accountId: string, input: { code: number; name: string }) {
     setErrorMessage(null)
     setIsMutatingAccounts(true)
-    const applyLocalUpdate = () => {
-      setAccounts((current) =>
-        sortAccounts(
-          current.map((account) =>
-            account.id === accountId
-              ? { ...account, code: input.code, name: input.name, updated_at: nowIso() }
-              : account,
-          ),
-        ),
-      )
-      setIsLocalAccountsFallback(true)
-    }
-
-    if (isLocalAccountsFallback) {
-      applyLocalUpdate()
-      setIsMutatingAccounts(false)
-      return
-    }
-
     try {
       const updated = await updateAccountRequest(accountId, {
         code: input.code,
@@ -500,13 +418,8 @@ function App() {
       setAccounts((current) =>
         sortAccounts(current.map((account) => (account.id === accountId ? updated : account))),
       )
-      setIsLocalAccountsFallback(false)
     } catch (error) {
-      if (shouldUseLocalAccountFallback(error)) {
-        applyLocalUpdate()
-      } else {
-        setErrorMessage(toErrorMessage(error))
-      }
+      setErrorMessage(toErrorMessage(error))
     } finally {
       setIsMutatingAccounts(false)
     }
@@ -515,27 +428,11 @@ function App() {
   async function handleRemoveAccount(accountId: string) {
     setErrorMessage(null)
     setIsMutatingAccounts(true)
-    const applyLocalRemove = () => {
-      setAccounts((current) => current.filter((account) => account.id !== accountId))
-      setIsLocalAccountsFallback(true)
-    }
-
-    if (isLocalAccountsFallback) {
-      applyLocalRemove()
-      setIsMutatingAccounts(false)
-      return
-    }
-
     try {
       await removeAccountRequest(accountId)
       setAccounts((current) => current.filter((account) => account.id !== accountId))
-      setIsLocalAccountsFallback(false)
     } catch (error) {
-      if (shouldUseLocalAccountFallback(error)) {
-        applyLocalRemove()
-      } else {
-        setErrorMessage(toErrorMessage(error))
-      }
+      setErrorMessage(toErrorMessage(error))
     } finally {
       setIsMutatingAccounts(false)
     }

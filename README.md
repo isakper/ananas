@@ -5,77 +5,62 @@ Starter repo for a Python backend and React frontend with a docs-first workflow.
 ## Chosen Stack
 
 - Backend: Python 3.11 + FastAPI
-- Frontend: React + TypeScript
-- Frontend tooling: Node.js + Vite
+- Frontend: React + TypeScript + Vite
 - Database: PostgreSQL
 - Integration style: simple JSON API between frontend and backend
 
-This setup keeps PDF extraction straightforward on the backend, supports reliable persistence, and keeps the UI conventional on the frontend.
+## Quick Start (Recommended)
 
-## Required Product Features
+### 1) Prerequisites
 
-- Upload an invoice PDF from the frontend.
-- Generate a suggested journal entry with an LLM using the provided chart of accounts.
-- Persist the generated journal entry in PostgreSQL.
-- Show the bill and suggested journal entry in the UI.
-- Let the accountant approve or decline the suggested journal entry.
-- Ensure debits and credits are balanced before approval.
+- Docker + Docker Compose
 
-## Quick start
-
-### 1) Create and activate a virtual environment
-
-Use whichever tool you prefer. Two common options:
-
-Poetry-managed env:
-```bash
-poetry env use 3.11
-poetry install
-```
-
-Python venv:
-```bash
-python3.11 -m venv .venv
-source .venv/bin/activate
-python -m pip install --upgrade pip
-python -m pip install poetry
-poetry install
-```
-
-### 2) Install pre-commit hooks
+### 2) Configure environment
 
 ```bash
-poetry run pre-commit install
+cp .env.example .env
 ```
 
-Optional: run all hooks once:
-```bash
-poetry run pre-commit run --all-files
-```
+Set `ANTHROPIC_API_KEY` in `.env` (required).
 
-### 3) Run tests
+### 3) Start everything
 
 ```bash
-poetry run pytest
+scripts/dev-up
 ```
 
-### 4) Set up frontend dependencies
+Open:
 
+- Frontend: `http://127.0.0.1:5173`
+- Backend: `http://127.0.0.1:8000`
+
+## Day-to-day commands
+
+Stop stack:
 ```bash
-npm --prefix frontend install
+scripts/dev-down
 ```
 
-### 5) Run locally
+Reset stack + fresh DB volume:
+```bash
+scripts/dev-reset
+```
 
-In separate terminals:
+Quick health smoke check:
+```bash
+scripts/dev-smoke
+```
+
+## Alternative local run (without full Docker stack)
+
+You can still run services directly:
 
 ```bash
 scripts/db-up
 scripts/db-migrate
+poetry install
+npm --prefix frontend install
 poetry run uvicorn backend.app.main:app --reload
-```
-
-```bash
 npm --prefix frontend run dev
 ```
 
@@ -83,8 +68,9 @@ npm --prefix frontend run dev
 
 - `backend/`: FastAPI app, extraction logic, and persistence
 - `frontend/`: React + TypeScript app
-- `docs/`: architecture, checks, and planning docs
+- `docs/`: architecture, checks, plans, and specs
 - `tests/`: backend-focused automated tests
+- `scripts/`: local developer entrypoints
 
 ## Key Docs
 
@@ -92,22 +78,5 @@ npm --prefix frontend run dev
 - `ARCHITECTURE.md`: folder structure and responsibilities
 - `docs/product-spec.md`: required product behavior and acceptance criteria
 - `docs/FRONTEND.md`: frontend stack and conventions
-- `docs/CHECKS.md`: target local commands and manual verification
+- `docs/CHECKS.md`: validation/manual checks before PR
 - `docs/CODE_STANDARDS.md`: coding rules and change hygiene
-
-## Common tasks
-
-Format:
-```bash
-poetry run black .
-```
-
-Sort imports:
-```bash
-poetry run isort .
-```
-
-Typecheck:
-```bash
-poetry run mypy .
-```

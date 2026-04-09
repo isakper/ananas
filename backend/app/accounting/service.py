@@ -40,7 +40,7 @@ def is_balanced(postings: list[PostingAmounts]) -> bool:
 def choose_default_accounts(
     accounts: list[AccountChoice],
 ) -> tuple[AccountChoice, AccountChoice]:
-    """Pick default debit and credit accounts for a stub suggestion."""
+    """Pick default debit and credit accounts from active accounts."""
     if len(accounts) < 2:
         raise ValueError("At least two active accounts are required")
 

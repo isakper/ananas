@@ -1,6 +1,6 @@
 # Frontend
 
-Last reviewed: 2026-04-09
+Last reviewed: 2026-04-10
 
 ## Chosen Stack
 
@@ -75,16 +75,20 @@ Use the currently implemented endpoints in the backend:
 - `POST /journal-entries/{journal_entry_id}/approve`: approve pending entry
 - `POST /journal-entries/{journal_entry_id}/decline`: decline entry (`{ "reason": "..." }`)
 - `GET /accounts`: list chart-of-accounts entries
+- `POST /accounts`: create account
+- `PATCH /accounts/{account_id}`: update account
+- `DELETE /accounts/{account_id}`: deactivate account
 
 Notes:
 
-- Account create/edit/delete endpoints are not implemented yet; the frontend should reflect that gracefully.
 - Amount fields in API responses are decimal-like JSON values and should be handled as strings in frontend types.
 
 ## Local Networking
 
 - Keep frontend network calls in `frontend/src/lib/api/`.
-- Prefer relative API paths (for example `/invoices`) and use a Vite proxy to `http://127.0.0.1:8000` for local runs.
+- Prefer relative API paths (for example `/invoices`) and use a Vite proxy for local runs.
+- Default proxy target is `http://127.0.0.1:8000`.
+- In Docker Compose, set `VITE_PROXY_TARGET=http://backend:8000`.
 - Avoid direct database or file-system coupling from the frontend.
 
 ## Conventions

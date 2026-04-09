@@ -31,6 +31,9 @@ def get_settings() -> Settings:
     llm_ssl_verify = (
         llm_ssl_verify_raw.lower() != "false" if llm_ssl_verify_raw else True
     )
+    anthropic_api_key = os.getenv("ANTHROPIC_API_KEY", "").strip()
+    if anthropic_api_key == "":
+        raise ValueError("ANTHROPIC_API_KEY is required")
 
     return Settings(
         app_env=os.getenv("APP_ENV", "development"),
@@ -40,7 +43,7 @@ def get_settings() -> Settings:
         database_url=os.getenv(
             "DATABASE_URL", "postgresql://app:app@localhost:5432/app"
         ),
-        anthropic_api_key=os.getenv("ANTHROPIC_API_KEY", ""),
+        anthropic_api_key=anthropic_api_key,
         llm_model=os.getenv("LLM_MODEL", "claude-sonnet-4-5"),
         llm_ssl_verify=llm_ssl_verify,
         upload_dir=Path(os.getenv("UPLOAD_DIR", "backend/data/uploads")),

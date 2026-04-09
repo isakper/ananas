@@ -1,0 +1,14 @@
+.git
+.github
+.venv
+.mypy_cache
+.pytest_cache
+.playwright-cli
+backend/data
+frontend/dist
+frontend/node_modules
+output
+test-results
+frontend-ui-check.png
+*.pyc
+__pycache__

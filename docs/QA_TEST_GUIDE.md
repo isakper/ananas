@@ -277,7 +277,7 @@ Expected results:
 1. Confirm `Generate suggestion` is disabled before any upload.
 2. Confirm repeated rapid clicks on action buttons do not send uncontrolled duplicate requests (buttons disable during loading).
 3. Confirm browser refresh clears local PDF preview, but backend data still exists when re-fetched by id.
-4. Confirm app still works without `ANTHROPIC_API_KEY` (stub path generates deterministic suggestion).
+4. Confirm app fails clearly when `ANTHROPIC_API_KEY` is missing.
 5. Confirm approval is blocked if warning panel says totals/accounts are invalid.
 
 ## Optional API Sanity Cases (Postman/cURL)

@@ -4,10 +4,10 @@ set -euo pipefail
 repo_root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 cd "$repo_root"
 
-docker compose up -d postgres
+database_url="${DATABASE_URL:-postgresql://app:app@postgres:5432/app}"
 
 run_psql() {
-  docker compose exec -T postgres psql -U app -d app -v ON_ERROR_STOP=1 "$@"
+  psql "$database_url" -v ON_ERROR_STOP=1 "$@"
 }
 
 migration_recorded() {
@@ -28,7 +28,7 @@ bootstrap_legacy_migrations() {
     schema_ready="$(run_psql -Atq -c "SELECT to_regclass('public.accounts') IS NOT NULL AND to_regclass('public.invoices') IS NOT NULL AND to_regclass('public.journal_entries') IS NOT NULL AND to_regclass('public.journal_postings') IS NOT NULL;")"
     if [[ "$schema_ready" == "t" ]]; then
       mark_migration "0001_initial_schema.sql"
-      echo "[db-migrate] Bootstrapped 0001_initial_schema.sql"
+      echo "[db-migrate-direct] Bootstrapped 0001_initial_schema.sql"
     fi
   fi
 
@@ -37,7 +37,7 @@ bootstrap_legacy_migrations() {
     has_seed="$(run_psql -Atq -c "SELECT EXISTS(SELECT 1 FROM accounts WHERE code = 1930);")"
     if [[ "$has_seed" == "t" ]]; then
       mark_migration "0002_seed_accounts.sql"
-      echo "[db-migrate] Bootstrapped 0002_seed_accounts.sql"
+      echo "[db-migrate-direct] Bootstrapped 0002_seed_accounts.sql"
     fi
   fi
 
@@ -46,7 +46,7 @@ bootstrap_legacy_migrations() {
     has_generation_status="$(run_psql -Atq -c "SELECT EXISTS(SELECT 1 FROM information_schema.columns WHERE table_schema = 'public' AND table_name = 'invoices' AND column_name = 'generation_status');")"
     if [[ "$has_generation_status" == "t" ]]; then
       mark_migration "0003_invoice_generation_status.sql"
-      echo "[db-migrate] Bootstrapped 0003_invoice_generation_status.sql"
+      echo "[db-migrate-direct] Bootstrapped 0003_invoice_generation_status.sql"
     fi
   fi
 }
@@ -58,12 +58,12 @@ mapfile -t migrations < <(find backend/db/migrations -maxdepth 1 -type f -name '
 for migration in "${migrations[@]}"; do
   migration_name="$(basename "$migration")"
   if migration_recorded "$migration_name"; then
-    echo "[db-migrate] Skipping ${migration_name} (already applied)"
+    echo "[db-migrate-direct] Skipping ${migration_name} (already applied)"
     continue
   fi
-  run_psql -f "/migrations/${migration_name}"
+  run_psql -f "$migration"
   mark_migration "$migration_name"
-  echo "[db-migrate] Applied ${migration_name}"
+  echo "[db-migrate-direct] Applied ${migration_name}"
 done
 
-echo "[db-migrate] Migrations applied"
+echo "[db-migrate-direct] Migrations applied"

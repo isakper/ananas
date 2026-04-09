@@ -28,7 +28,7 @@ interface EditablePosting {
   id: string
   line_no: number
   account_id: string
-  account_label_fallback: string
+  account_label_snapshot: string
   description: string
   debit_amount: string
   credit_amount: string
@@ -91,7 +91,7 @@ function toEditablePosting(posting: JournalPosting): EditablePosting {
     id: posting.id,
     line_no: posting.line_no,
     account_id: posting.account_id,
-    account_label_fallback: `${posting.account_code_snapshot} ${posting.account_name_snapshot}`,
+    account_label_snapshot: `${posting.account_code_snapshot} ${posting.account_name_snapshot}`,
     description: posting.description ?? '',
     debit_amount: String(posting.debit_amount),
     credit_amount: String(posting.credit_amount),
@@ -364,7 +364,7 @@ export function JournalReviewPanel({
                           ))}
                           {!hasActiveSelection ? (
                             <option value={posting.account_id}>
-                              {`${posting.account_label_fallback} (inactive)`}
+                              {`${posting.account_label_snapshot} (inactive)`}
                             </option>
                           ) : null}
                         </select>

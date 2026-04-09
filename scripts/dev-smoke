@@ -1,0 +1,10 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+backend_url="http://127.0.0.1:${BACKEND_PORT:-8000}"
+frontend_url="http://127.0.0.1:${FRONTEND_PORT:-5173}"
+
+curl -fsS "$backend_url/health" >/dev/null
+curl -fsS -I "$frontend_url" >/dev/null
+
+echo "[dev-smoke] Backend health and frontend HTTP check passed"
