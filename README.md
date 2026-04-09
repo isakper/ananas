@@ -1,6 +1,6 @@
 # Standard Template With Agents
 
-Template repo for a docs-first, agent-friendly workflow.
+Starter repo for a Python backend and React frontend with a docs-first workflow.
 
 ## Chosen Stack
 
@@ -50,77 +50,20 @@ poetry run pre-commit run --all-files
 poetry run pytest
 ```
 
-## Recorded decisions
+## Project Layout
 
-- Backend framework: FastAPI
-- Frontend framework: React
-- Frontend language: TypeScript
-- Frontend build tool: Vite
-- Repo layout: split `backend/` and `frontend/`
-- Python package manager: Poetry
-- Frontend package manager: npm
-- Database: SQLite for local persistence when needed
+- `backend/`: FastAPI app, extraction logic, and persistence
+- `frontend/`: React + TypeScript app
+- `docs/`: architecture, checks, and planning docs
+- `tests/`: backend-focused automated tests
 
-Where to record these:
-- `ARCHITECTURE.md` for repo layout, components, and invariants.
-- `docs/FRONTEND.md` for frontend conventions.
-- `docs/CHECKS.md` for canonical commands (format/lint/typecheck/test/build/run).
+## Key Docs
 
-Optional: Playwright MCP for agent UI testing
-This is a per-user setting (lives in `~/.codex/config.toml`), so each developer adds it locally:
-```bash
-codex mcp add playwright npx "@playwright/mcp@latest"
-```
-Or add to `~/.codex/config.toml`:
-```toml
-[mcp_servers.playwright]
-command = "npx"
-args = ["@playwright/mcp@latest"]
-```
-Or use the helper script:
-```bash
-./scripts/setup_mcp_playwright.sh
-```
-
-## What else to think about
-
-Docs are the source of truth. Start with `AGENTS.md` and `docs/` before coding.
-Checks and local validation are defined in `docs/CHECKS.md`.
-Code standards and layering rules are in `docs/CODE_STANDARDS.md`.
-
-## How this repo works for agents
-
-This template is designed so agents can rely on explicit, stable guidance instead of tribal knowledge.
-
-System of record:
-`AGENTS.md` and `docs/` define how to work, what standards apply, and where to update decisions.
-
-Pre-commit automation:
-Hooks are defined in `.pre-commit-config.yaml` and enforced locally via `pre-commit install`.
-
-Pre-commit hooks currently configured:
-- `pre-commit-hooks` for conflict checks, file hygiene, and secret detection
-- `black` for formatting
-- `isort` for import ordering
-- `pydocstyle` for docstring style
-- `darglint` for docstring completeness
-- `mypy` for static typing
-- `repo: local` hooks for architecture/plan linting and pre-push test validation
-
-Custom hooks:
-Repo-local hooks are already used (for example `lint-architecture`, `lint-plan`, and `ci-test-local`). When you add more, define them under `repo: local` in `.pre-commit-config.yaml`, point each one at a script in this repo, and document them in this section.
-
-Unit tests:
-Pytest is the default backend test runner. Frontend tests can be added later if they buy us confidence without slowing down delivery.
-
-Validation loop:
-Expected local checks and manual verification live in `docs/CHECKS.md`.
-
-## Repo map
-
-`ARCHITECTURE.md`: system shape and invariants.
-`docs/`: deeper guides and templates.
-`docs/exec-plans/`: execution plans.
+- `AGENTS.md`: working agreements for agents
+- `ARCHITECTURE.md`: folder structure and responsibilities
+- `docs/FRONTEND.md`: frontend stack and conventions
+- `docs/CHECKS.md`: target local commands and manual verification
+- `docs/CODE_STANDARDS.md`: coding rules and change hygiene
 
 ## Common tasks
 
@@ -138,5 +81,3 @@ Typecheck:
 ```bash
 poetry run mypy .
 ```
-
-If you want me to tailor this to your specific stack (web, CLI, data, etc.), tell me what you’re building.
