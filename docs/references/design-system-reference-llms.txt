@@ -1,3 +1,0 @@
-Notes for agents:
-- Design system references go here (tokens are cheap; confusion is expensive).
-- Prefer concrete examples over abstract rules.

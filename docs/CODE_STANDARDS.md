@@ -1,6 +1,6 @@
 # Code Standards
 
-Last reviewed: 2026-02-23
+Last reviewed: 2026-04-09
 
 
 ## Principles
@@ -17,5 +17,7 @@ Last reviewed: 2026-02-23
 - Make failure modes explicit and actionable.
 - Include enough context for debugging (without leaking secrets).
 
-## Security and reliability
-- Follow `docs/SECURITY.md` and `docs/RELIABILITY.md` for baseline expectations.
+## Operational hygiene
+- Keep secrets out of source control and logs.
+- Make failure modes explicit and actionable.
+- Prefer low-boilerplate local dependencies unless extra infrastructure clearly pays for itself.

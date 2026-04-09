@@ -1,19 +1,27 @@
 # Checks
 
-Last reviewed: 2026-02-23
+Last reviewed: 2026-04-09
 
 
 This doc defines the standard local validation loop before opening a PR.
 
-## Canonical commands (fill these in per repo)
-Document the *actual* commands for this repo here, then keep them stable.
+## Chosen Toolchain
 
-- Format:
+- Backend: Python 3.11 + FastAPI
+- Frontend: React + TypeScript + Vite
+- Frontend runtime/tooling: Node.js
+- Local persistence: SQLite when needed
+
+Some commands below are the target workflow for the scaffold we are building, not commands that already exist in the repo yet.
+
+## Target canonical commands
+
+- Format: `poetry run black .`
 - Lint: `scripts/lint-architecture`
-- Typecheck:
-- Unit tests:
-- Build:
-- Run locally:
+- Typecheck: backend via `poetry run mypy .`; frontend via `npm run build` or `npm run typecheck` once scaffolded
+- Unit tests: `poetry run pytest`
+- Build: frontend via `npm run build`
+- Run locally: backend via `poetry run uvicorn backend.app.main:app --reload`; frontend via `npm run dev`
 
 ## Suggested sequence (before commit / PR)
 1. Format
@@ -25,22 +33,21 @@ Document the *actual* commands for this repo here, then keep them stable.
 ## Run locally
 Add the standard “run it” command and required env vars/secrets setup.
 
-- Command:
-- Required env:
-- Seed data (if any):
-- Common troubleshooting:
+- Backend command: `poetry run uvicorn backend.app.main:app --reload`
+- Frontend command: `npm run dev`
+- Required env: backend API key for document processing when the exercise provides one
+- Seed data: optional sample PDFs for fast manual verification
+- Common troubleshooting: check backend logs first, then browser console/network tab
 
 ## Manual checks (examples)
 Keep this short and focused on high-signal flows.
 
 - App starts cleanly (no obvious errors in logs/console)
-- UI validation loop completed (capture screenshot, DOM snapshot, console excerpt, network failures). See `docs/UI_VALIDATION.md`.
-- One primary user flow end-to-end
-- One negative path (invalid input / permission denied / missing resource)
-- Performance sanity (page/API responds; no accidental N+1 obviousness)
-- Observability sanity (key logs/metrics emitted; no secret leakage)
-- Observability: confirm a key metric moves during a core flow
-- Observability: confirm a trace exists for a core flow
+- Uploading a valid PDF reaches the backend and returns a result
+- Extracted content renders clearly in the UI
+- Invalid or unsupported files produce a useful error message
+- A second upload after the first one still works without refresh
+- No backend traceback or browser console error appears on the happy path
 
 ## Optional: single entrypoint script
 If you want a one-liner, keep it as a convenience (not the source of truth) and ensure it matches this doc.

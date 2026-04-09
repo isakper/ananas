@@ -259,6 +259,25 @@ def check_index(index_path: Path, directory: Path) -> list[LintError]:
     return errors
 
 
+def check_optional_index(index_path: Path, directory: Path) -> list[LintError]:
+    """Validate an index file only when the folder is present.
+
+    Args:
+        index_path: Index file path.
+        directory: Directory containing markdown docs.
+
+    Returns:
+        List of index errors.
+    """
+    if not directory.exists():
+        return []
+    if not index_path.exists():
+        return [
+            LintError(index_path, f"Missing index file: {index_path.relative_to(ROOT)}")
+        ]
+    return check_index(index_path, directory)
+
+
 def check_docs_links() -> list[LintError]:
     """Validate docs/ markdown links resolve to files in the repo.
 
@@ -336,10 +355,14 @@ def main() -> int:
     errors.extend(check_required_docs(policy))
     errors.extend(check_agents_links())
     errors.extend(
-        check_index(DOCS_DIR / "design-docs" / "index.md", DOCS_DIR / "design-docs")
+        check_optional_index(
+            DOCS_DIR / "design-docs" / "index.md", DOCS_DIR / "design-docs"
+        )
     )
     errors.extend(
-        check_index(DOCS_DIR / "product-specs" / "index.md", DOCS_DIR / "product-specs")
+        check_optional_index(
+            DOCS_DIR / "product-specs" / "index.md", DOCS_DIR / "product-specs"
+        )
     )
     errors.extend(check_docs_links())
     errors.extend(check_generated_docs())
