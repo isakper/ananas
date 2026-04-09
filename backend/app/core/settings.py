@@ -27,6 +27,11 @@ class Settings:
 @lru_cache(maxsize=1)
 def get_settings() -> Settings:
     """Load application settings."""
+    llm_ssl_verify_raw = os.getenv("LLM_SSL_VERIFY")
+    llm_ssl_verify = (
+        llm_ssl_verify_raw.lower() != "false" if llm_ssl_verify_raw else True
+    )
+
     return Settings(
         app_env=os.getenv("APP_ENV", "development"),
         app_name=os.getenv("APP_NAME", "invoice-journal-entry"),
@@ -37,7 +42,7 @@ def get_settings() -> Settings:
         ),
         anthropic_api_key=os.getenv("ANTHROPIC_API_KEY", ""),
         llm_model=os.getenv("LLM_MODEL", "claude-sonnet-4-5"),
-        llm_ssl_verify=os.getenv("LLM_SSL_VERIFY", "true").lower() != "false",
+        llm_ssl_verify=llm_ssl_verify,
         upload_dir=Path(os.getenv("UPLOAD_DIR", "backend/data/uploads")),
         max_upload_bytes=int(os.getenv("MAX_UPLOAD_BYTES", str(10 * 1024 * 1024))),
     )

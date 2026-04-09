@@ -9,8 +9,6 @@ import urllib.error
 import urllib.request
 from typing import Protocol
 
-import certifi
-
 from backend.app.integrations.llm.types import LlmRequest, LlmResponse
 
 
@@ -68,7 +66,7 @@ class AnthropicLlmGateway:
         self._api_key = api_key
         self._model = model
         if verify_ssl:
-            self._ssl_context = ssl.create_default_context(cafile=certifi.where())
+            self._ssl_context = ssl.create_default_context()
         else:
             self._ssl_context = ssl._create_unverified_context()
 
@@ -134,7 +132,15 @@ class AnthropicLlmGateway:
                 f"LLM call failed with status {exc.code}: {detail}"
             ) from exc
         except urllib.error.URLError as exc:
-            raise RuntimeError(f"LLM call failed: {exc.reason}") from exc
+            reason = str(exc.reason)
+            if "CERTIFICATE_VERIFY_FAILED" in reason:
+                raise RuntimeError(
+                    "LLM TLS verification failed. Ensure your local trust store "
+                    "includes your company proxy/root CA (for example Zscaler). "
+                    "Only as a temporary local fallback, set LLM_SSL_VERIFY=false "
+                    "in .env."
+                ) from exc
+            raise RuntimeError(f"LLM call failed: {reason}") from exc
 
         parsed_payload = json.loads(raw_payload)
         text = _extract_text_from_response(parsed_payload)
