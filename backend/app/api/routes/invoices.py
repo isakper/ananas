@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import hashlib
 from pathlib import Path
 from uuid import UUID, uuid4
 
@@ -42,11 +43,13 @@ async def create_invoice(
     if len(payload) > settings.max_upload_bytes:
         raise HTTPException(status_code=400, detail="Uploaded file is too large")
 
+    content_hash = hashlib.sha256(payload).hexdigest()
     upload_path = _persist_file(payload, file.filename or "invoice.pdf", settings)
     invoice = repository.create_invoice(
         original_filename=file.filename or "invoice.pdf",
         mime_type=file.content_type or "application/pdf",
         file_path=str(upload_path),
+        content_hash=content_hash,
     )
     bundle = repository.get_invoice_bundle(invoice.id)
     if bundle is None:

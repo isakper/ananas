@@ -1,6 +1,6 @@
 # Execution Plan: Manual Journal Edit Before Decision
 
-Updated: 2026-04-09
+Updated: 2026-04-10
 
 ## Objective
 Allow accountants to edit LLM-suggested postings before approving or declining, so near-correct suggestions can be fixed instead of always rejected.
@@ -17,28 +17,25 @@ Success criteria:
 - Undo/redo history beyond simple in-session reset.
 
 ## Milestones
-1. Define edit model and API contract:
-   - Add update endpoint for pending entries (recommended `PUT /journal-entries/{id}` with full postings payload).
-   - Define immutable fields and editable fields.
-   - Define concurrency strategy (simple optimistic lock via `updated_at` check, or last-write-wins for MVP).
-2. Implement backend edit flow:
-   - Validate account existence/active status.
-   - Validate positive numeric amounts and exactly-one-side debit/credit rule.
-   - Validate debit/credit balance and update entry totals atomically.
-   - Block edits when entry status is not `pending`.
-3. Add backend tests:
-   - Happy-path edit with total recalculation.
-   - Invalid account/amount/unbalanced payload cases.
-   - Attempt edit on approved/declined entry.
-4. Implement frontend editable journal table:
-   - Make rows editable in `pending` state.
-   - Add add/remove row controls and inline validation feedback.
-   - Add save action with disabled states while saving.
-   - Add “reset to last generated suggestion” affordance.
-5. Clarify audit/traceability UX:
-   - Show “Edited” marker after successful manual save.
-   - Persist optional editor note for rationale (if scope allows).
-   - Ensure approve/decline messages reflect latest saved version.
+1. Completed (scope adjusted): define edit model and API contract.
+   - Implemented as `PATCH /journal-entries/{id}` with full postings payload.
+   - Concurrency control (optimistic lock/version check) is not yet implemented.
+2. Completed: implement backend edit flow.
+   - Pending-only edit enforcement, account validation, amount validation, and balance checks are in place.
+3. In progress: add backend tests.
+   - Validation regression tests exist.
+   - Happy-path persistence and non-pending edit route tests are still missing.
+4. Completed: implement frontend editable journal table.
+   - Pending entries support inline edits, save, and reset.
+   - Validation feedback and save/approve gating are implemented.
+5. In progress: clarify audit/traceability UX.
+   - Unsaved-change warnings exist.
+   - Explicit “Edited” markers and editor rationale notes are still missing.
+
+## Remaining Work
+- Add route/integration tests for successful patch save and non-pending edit rejection.
+- Decide and implement simple concurrency protection for conflicting edits.
+- Add explicit edited-state indicator and optional edit note metadata.
 
 ## Validation
 - `python3 scripts/doc_lint.py`
@@ -52,12 +49,11 @@ Success criteria:
 - Approve edited posting set and verify persisted status.
 
 ## Rollout
-- Ship backend edit API and validation first.
-- Ship frontend editing UX in a second step.
-- Keep approve/decline endpoints unchanged but ensure they read updated postings.
-- Update API/product docs in same PR as behavior changes.
+- Land missing backend/API tests first.
+- Add audit-traceability UI/API enhancements in a follow-up diff.
+- Keep approve/decline endpoints unchanged but validated against updated postings.
 
 ## Risks
-- Without clear edit-state UX, users may not trust what is being approved.
-- Concurrency conflicts can overwrite edits if reopening the same entry in multiple tabs.
+- Without explicit edited-state cues, users may not trust what is being approved.
+- Concurrent edits from multiple tabs can overwrite each other.
 - Validation mismatch between frontend and backend can create confusing save failures.

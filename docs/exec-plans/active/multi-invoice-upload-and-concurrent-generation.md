@@ -1,6 +1,6 @@
 # Execution Plan: Multi-Invoice Upload and Concurrent Generation
 
-Updated: 2026-04-09
+Updated: 2026-04-10
 
 ## Objective
 Enable accountants to upload multiple invoices in one action and process them concurrently with clear per-invoice progress, errors, and decision readiness.
@@ -17,26 +17,25 @@ Success criteria:
 - Throughput tuning for production-scale workloads.
 
 ## Milestones
-1. Decide batch strategy and API shape:
-   - MVP default: keep existing single `POST /invoices` and run parallel uploads client-side.
-   - Optional phase 2: add bulk upload endpoint if client orchestration proves too noisy.
-   - Define frontend concurrency limits (for example, max 3-5 in-flight generation requests).
-2. Implement frontend multi-upload UX:
-   - Enable multi-file selection in upload input.
-   - Add per-file rows with status, retry, and open-in-review actions.
-   - Preserve individual errors without collapsing to a single global error.
-3. Implement concurrent generation controls:
-   - Add “Generate all ready” and per-invoice generate buttons.
-   - Queue generation with bounded parallelism.
-   - Keep review panel tied to selected invoice while background generation continues.
-4. Add backend safety and observability improvements:
-   - Ensure status updates are idempotent and stable under repeated generate requests.
-   - Improve generation error messages for queue-style UX.
-   - Add logs keyed by invoice id to trace concurrent runs.
-5. Add tests and docs:
-   - Frontend tests for queue state transitions (if test harness exists) or documented manual matrix.
-   - Backend tests for repeated generation calls on same invoice.
-   - Update `docs/API.md`, `docs/product-spec.md`, and `docs/FRONTEND.md` with multi-upload behavior.
+1. In progress: decide batch strategy and API shape.
+   - Multi-file client upload path is in place.
+   - Explicit concurrency policy and limits are not yet implemented.
+2. In progress: implement frontend multi-upload UX.
+   - Multi-file selection and upload are implemented.
+   - Per-file retry controls and clearer per-item progress states are still missing.
+3. Not started: implement concurrent generation controls.
+   - No `Generate all ready` flow or bounded generation queue yet.
+4. Not started: add backend safety and observability improvements.
+   - No dedicated idempotency/overlap safeguards or invoice-keyed generation logs yet.
+5. In progress: add tests and docs.
+   - Core docs and UI have moved toward multi-invoice management.
+   - Test coverage and explicit multi-upload behavior docs are incomplete.
+
+## Remaining Work
+- Add per-invoice generation controls (`Generate all`, retry failed, queue visibility).
+- Implement bounded parallel generation strategy in frontend.
+- Add backend safeguards for overlapping generate requests on same invoice.
+- Add dedicated test coverage for multi-upload and concurrent generation behavior.
 
 ## Validation
 - `python3 scripts/doc_lint.py`
@@ -50,12 +49,11 @@ Success criteria:
 - Approve one ready invoice while others still generate.
 
 ## Rollout
-- Ship frontend multi-upload list first using existing single-upload API.
-- Add bounded concurrency generation in follow-up.
-- Only add backend bulk endpoint if user friction remains high after client-side batching.
-- Keep feature behind straightforward UX controls (no hidden toggles).
+- Finish upload-side UX polish first (status + retry clarity).
+- Add bounded concurrency generation in a focused follow-up.
+- Only add backend bulk endpoint if client-side orchestration remains too noisy.
 
 ## Risks
-- Aggressive parallel requests can overwhelm local backend/LLM limits.
-- Poor per-item error handling can make batch failures hard to recover from.
-- Race conditions may confuse status if repeated generate requests overlap.
+- Parallel requests can overwhelm local backend/LLM limits.
+- Weak per-item error handling makes batch failures hard to recover from.
+- Race conditions can confuse status when repeated generate requests overlap.

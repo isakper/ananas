@@ -5,7 +5,7 @@ interface StatusPillProps {
 }
 
 const LABEL_BY_STATUS: Record<JournalStatus, string> = {
-  pending: 'Pending review',
+  pending: 'Pending',
   approved: 'Approved',
   declined: 'Declined',
 }

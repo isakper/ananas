@@ -1,303 +1,428 @@
 # QA Test Guide: Invoice to Journal Entry
 
-Last reviewed: 2026-04-09
+Last reviewed: 2026-04-10
 
 ## Purpose
 
-This guide is for manual QA of the current MVP. It explains exactly what to test, in what order, and what result should happen.
+This guide is for onboarding junior QA testers. It describes exactly what to test in the current app, with concrete steps and expected results.
 
 ## Current Product Scope
 
 User can:
 
-- Upload a PDF invoice.
-- Generate a journal suggestion.
-- Review totals and postings.
-- Approve or decline a pending suggestion.
-- View and refresh chart of accounts.
+- Navigate from `Home` to:
+- `Invoice Management`
+- `Company Setup`
+- Upload multiple PDF invoices in one action.
+- See pending and processed invoice lists.
+- Open any invoice into `Invoice Review`.
+- Generate suggestion for a selected invoice.
+- Edit posting lines on pending journal entries (account, description, debit, credit).
+- Save or reset line edits.
+- Approve or decline pending entries.
+- Manage chart of accounts (create, edit, remove/deactivate).
+- View uploaded PDF via backend-served `GET /invoices/{id}/pdf`.
 
-Not in scope yet:
+Important business rules visible in UI:
 
-- Account create/edit/delete in UI.
+- Approval blocked if journal is unbalanced.
+- Approval blocked if posting references missing/inactive account.
+- Approval blocked if invoice is flagged as possible duplicate.
+- Approval blocked until unsaved line edits are saved or reset.
 
 ## Test Setup
-
-Run these before testing:
 
 1. Start DB: `scripts/db-up`
 2. Run migrations: `scripts/db-migrate`
 3. Start backend: `poetry run uvicorn backend.app.main:app --reload`
 4. Start frontend: `npm --prefix frontend run dev`
-5. Open app URL from Vite output.
+5. Open app URL from Vite terminal output.
 
-Test data:
+Test files:
 
-- Valid sample PDF: `/Users/perssonisak/Projects/private/ananas/docs/interview_guide/simple_invoice.pdf`
-- Invalid upload file: any `.txt` file
-- Empty PDF file: create a 0-byte `.pdf`
-- Large PDF file: any PDF over 10 MB (or current `MAX_UPLOAD_BYTES`)
+- Valid PDF: `/Users/perssonisak/Projects/private/ananas/docs/interview_guide/simple_invoice.pdf`
+- Another valid PDF (copy with different filename): `cp docs/interview_guide/simple_invoice.pdf /tmp/simple_invoice_copy.pdf`
+- Invalid file: any `.txt`
+- Empty PDF: `touch /tmp/empty.pdf`
+- Large PDF: any `.pdf` > 10 MB (or > `MAX_UPLOAD_BYTES`)
 
-## Test Cases (Manual)
+## Manual Test Cases
 
-## TC-001 App Loads Correctly
+## TC-001 Home Navigation
 
-Goal: verify basic startup and navigation.
-
-Preconditions:
-
-- Backend and frontend are running.
+Goal: verify top-level navigation.
 
 Steps:
 
-1. Open the app in browser.
-2. Confirm `Review` tab is selected.
-3. Click `Chart of Accounts`.
-4. Click `Review` again.
+1. Open app.
+2. Confirm `Home` shows two cards: `Invoice Management`, `Company Setup`.
+3. Open `Invoice Management`.
+4. Click `Home` button in top bar.
+5. Open `Company Setup`.
 
-Expected results:
+Expected:
 
-- No crash or blank page.
-- `Review` shows upload card, invoice viewer empty state, and journal review empty state.
-- `Chart of Accounts` shows account table and `Refresh` button.
+- No crashes.
+- Navigation between these screens works.
 
-## TC-002 Upload Valid PDF
+## TC-002 Upload Multiple PDFs
 
-Goal: verify upload happy path.
-
-Preconditions:
-
-- On `Review` tab.
+Goal: verify multi-file upload and list population.
 
 Steps:
 
-1. Select `simple_invoice.pdf` in file input.
-2. Click `Upload invoice`.
+1. Go to `Invoice Management`.
+2. In `Invoice Upload`, choose two valid PDFs.
+3. Click `Upload selected`.
 
-Expected results:
+Expected:
 
-- Button shows `Uploading...` while request is in progress.
-- Success banner appears: invoice uploaded.
-- `Current invoice: ...` text shows filename.
-- PDF renders in `Invoice Viewer`.
-- `Generate suggestion` button is enabled.
+- Button shows `Uploading...` during request.
+- Uploaded invoices appear in `Pending Review` list.
+- Each row has filename, status pill, updated timestamp, flag column, and `Open` button.
 
-## TC-003 Generate Suggestion
+## TC-003 Partial Upload Failure
 
-Goal: verify generation and rendering of suggestion.
+Goal: verify mixed success/failure behavior.
 
-Preconditions:
+Steps:
 
-- A valid invoice is already uploaded.
+1. Select one valid PDF and one `.txt` file.
+2. Click `Upload selected`.
+
+Expected:
+
+- Valid file is uploaded and appears in list.
+- Error banner explains partial failure and includes failed filename.
+- App remains usable.
+
+## TC-004 Open Invoice Review And PDF Rendering
+
+Goal: verify invoice open flow and backend PDF serving.
+
+Steps:
+
+1. In `Pending Review`, click `Open` for an invoice.
+2. Confirm screen switches to `Invoice Review`.
+3. Verify PDF renders in `Invoice Viewer`.
+4. Use `Invoices` button to return to list.
+
+Expected:
+
+- Selected invoice opens correctly.
+- Viewer shows PDF (served from backend endpoint).
+
+## TC-005 Generate Suggestion
+
+Goal: verify suggestion creation from review screen.
+
+Precondition:
+
+- Open an invoice that has no journal entry yet.
 
 Steps:
 
 1. Click `Generate suggestion`.
-2. Wait for response.
 
-Expected results:
+Expected:
 
-- Button shows `Generating...` while running.
-- Success banner appears for generated suggestion.
-- Journal status pill shows `Pending review`.
-- Postings table is visible with at least two lines.
-- Debit and Credit totals are shown.
-- `Extracted Markdown` panel appears.
+- Button shows `Generating...` during request.
+- Journal status shows `Pending review`.
+- Posting table appears.
+- Totals display in `SEK`.
 
-## TC-004 Approve Pending Suggestion
+## TC-006 Edit Posting Lines And Save
 
-Goal: verify approve flow.
+Goal: verify manual journal editing workflow.
 
-Preconditions:
+Precondition:
 
-- Journal entry status is `Pending review`.
-- No approval violation warning shown.
+- Invoice has pending journal entry.
+
+Steps:
+
+1. Change one posting description.
+2. Change one posting account via dropdown.
+3. Click `Save line edits`.
+
+Expected:
+
+- `Save line edits` becomes enabled only when there are unsaved changes.
+- During save: button shows `Saving...`.
+- Save succeeds and edited values persist in table.
+- Unsaved-change warning disappears after save.
+
+## TC-007 Reset Unsaved Edits
+
+Goal: verify reset behavior.
+
+Precondition:
+
+- Pending entry with unsaved modifications.
+
+Steps:
+
+1. Modify at least one field.
+2. Click `Reset edits`.
+
+Expected:
+
+- Draft values revert to last saved server state.
+- Unsaved-change warning disappears.
+
+## TC-008 Validation While Editing
+
+Goal: verify edit validation messaging and save blocking.
+
+Precondition:
+
+- Pending entry.
+
+Steps:
+
+1. Set both debit and credit to positive on one line.
+2. Observe warning.
+3. Set both debit and credit to `0` on one line.
+4. Observe warning.
+5. Make totals unbalanced.
+
+Expected:
+
+- Warning panel `Cannot save edits` appears with specific line/total errors.
+- `Save line edits` is disabled while violations exist.
+
+## TC-009 Approval Blocked With Unsaved Changes
+
+Goal: verify approval gate for unsaved drafts.
+
+Precondition:
+
+- Pending entry.
+
+Steps:
+
+1. Modify any posting field.
+2. Without saving/resetting, try to approve.
+
+Expected:
+
+- Warning says to save edits before approving.
+- `Approve` button remains disabled.
+
+## TC-010 Approve Happy Path
+
+Goal: verify approval and list transition.
+
+Precondition:
+
+- Pending entry, no edit violations, no unsaved changes, not duplicate-flagged.
 
 Steps:
 
 1. Click `Approve`.
 
-Expected results:
+Expected:
 
-- Button shows `Approving...` while request is in progress.
-- Success banner appears for approval.
-- Status changes to `Approved`.
-- Approve and Decline controls become disabled.
+- Button shows `Approving...`.
+- Entry status becomes approved.
+- App navigates back to `Invoice Management`.
+- Invoice appears in `Processed Invoices`.
 
-## TC-005 Decline Pending Suggestion (No Reason)
+## TC-011 Decline Happy Path
 
-Goal: verify decline with empty reason.
+Goal: verify decline path.
 
-Preconditions:
+Precondition:
 
-- Journal entry status is `Pending review`.
+- Pending entry.
 
 Steps:
 
-1. Leave decline reason input empty.
+1. Enter optional decline reason.
 2. Click `Decline`.
 
-Expected results:
+Expected:
 
-- Button shows `Declining...` while request is in progress.
-- Success banner appears for decline.
-- Status changes to `Declined`.
-- No decision note is displayed.
+- Button shows `Declining...`.
+- Entry status becomes declined.
+- App navigates back to `Invoice Management`.
+- Invoice appears in `Processed Invoices`.
 
-## TC-006 Decline Pending Suggestion (With Reason)
+## TC-012 Duplicate Detection And Approval Block
 
-Goal: verify decline with reason persisted.
-
-Preconditions:
-
-- Journal entry status is `Pending review`.
+Goal: verify duplicate flag logic.
 
 Steps:
 
-1. Type `Incorrect account mapping` in decline reason input.
-2. Click `Decline`.
+1. Upload `simple_invoice.pdf`.
+2. Upload exact same file content again (same file or copied filename with same bytes).
+3. Open the second invoice and generate suggestion if needed.
 
-Expected results:
+Expected:
 
-- Status changes to `Declined`.
-- Decision note appears and contains `Incorrect account mapping`.
+- Second invoice row shows `Possible duplicate of <short-id>` in flag column.
+- In review screen, warning panel shows duplicate warning.
+- Approve is blocked for duplicate-flagged invoice.
 
-## TC-007 Regenerate After Decision
+## TC-013 Regenerate After Decision
 
-Goal: verify regenerate resets entry to pending state.
+Goal: verify regeneration resets decision status.
 
-Preconditions:
+Precondition:
 
-- Invoice is uploaded.
-- Entry is already `Approved` or `Declined`.
-
-Steps:
-
-1. Click `Generate suggestion` again.
-
-Expected results:
-
-- Status returns to `Pending review`.
-- Previous decision reason is cleared.
-- New suggestion is shown in table.
-
-## TC-008 Accounts Screen Loads Seeded Data
-
-Goal: verify accounts listing works.
-
-Preconditions:
-
-- DB migrations executed.
+- Invoice previously approved or declined.
 
 Steps:
 
-1. Open `Chart of Accounts` tab.
-2. Verify multiple accounts are listed.
-3. Confirm examples like `1930`, `2440`, `6530` exist.
-4. Click `Refresh`.
+1. Open processed invoice.
+2. Click `Generate suggestion`.
 
-Expected results:
+Expected:
 
-- Table loads with account code, name, and status.
-- `Refresh` button shows `Refreshing...` during request, then returns to normal.
+- Journal entry resets to pending.
+- Decision reason/decision timestamp are cleared.
+- Invoice returns to pending-review behavior.
 
-## TC-009 Upload Rejects Non-PDF
+## TC-014 Company Setup: Create Account
 
-Goal: verify file type validation.
-
-Preconditions:
-
-- On `Review` tab.
+Goal: verify account creation.
 
 Steps:
 
-1. Select a `.txt` file.
-2. Click `Upload invoice`.
+1. Open `Company Setup`.
+2. Enter valid code/name.
+3. Click `Add account`.
 
-Expected results:
+Expected:
 
-- Error banner appears with message equivalent to `Only PDF uploads are supported`.
-- App remains usable after error.
+- New account appears in table sorted by code.
+- No error banner.
 
-## TC-010 Upload Rejects Empty File
+## TC-015 Company Setup: Client-Side Validation
 
-Goal: verify empty-file validation.
-
-Preconditions:
-
-- On `Review` tab.
+Goal: verify local form validation.
 
 Steps:
 
-1. Select a 0-byte `.pdf`.
-2. Click `Upload invoice`.
+1. Try create with code `abc` or `0`.
+2. Try create with empty name.
 
-Expected results:
+Expected:
 
-- Error banner appears with message equivalent to `Uploaded file is empty`.
-- No invoice is set as current.
+- Local error shown:
+- `Account code must be a positive number.`
+- `Account name is required.`
+- Request is not sent.
 
-## TC-011 Upload Rejects Too-Large PDF
+## TC-016 Company Setup: Edit Account
 
-Goal: verify max upload size validation.
-
-Preconditions:
-
-- On `Review` tab.
+Goal: verify account edit workflow.
 
 Steps:
 
-1. Select PDF larger than configured max (default 10 MB).
-2. Click `Upload invoice`.
+1. Click `Edit` on an account.
+2. Change code and/or name.
+3. Click `Save`.
 
-Expected results:
+Expected:
 
-- Error banner appears with message equivalent to `Uploaded file is too large`.
+- Updated values appear in table.
+- `Cancel` exits edit mode without persisting.
 
-## TC-012 Generate Failure Shows Error
+## TC-017 Company Setup: Remove Account (Soft Delete)
 
-Goal: verify generation error handling.
-
-Preconditions:
-
-- Invoice uploaded.
-- Backend is configured so generate fails (for example broken LLM credentials/network when using Anthropic gateway).
+Goal: verify removal/deactivation behavior.
 
 Steps:
 
-1. Click `Generate suggestion`.
+1. Click `Remove` on an account not used in approved entries.
 
-Expected results:
+Expected:
 
-- Error banner is shown with backend error detail.
-- App does not freeze.
-- User can retry generation.
+- Account is removed from current frontend list.
+- No error shown.
 
-## Edge Case Checks
+## TC-018 Account Safeguard For Approved Entries
 
-1. Confirm `Generate suggestion` is disabled before any upload.
-2. Confirm repeated rapid clicks on action buttons do not send uncontrolled duplicate requests (buttons disable during loading).
-3. Confirm browser refresh clears local PDF preview, but backend data still exists when re-fetched by id.
-4. Confirm app fails clearly when `ANTHROPIC_API_KEY` is missing.
-5. Confirm approval is blocked if warning panel says totals/accounts are invalid.
+Goal: verify server safeguard against deactivating in-use approved account.
+
+Precondition:
+
+- At least one approved journal uses target account.
+
+Steps:
+
+1. In `Company Setup`, click `Remove` for that account.
+
+Expected:
+
+- Error banner shows conflict message similar to:
+- `Account is used by an approved journal entry`
+- Account remains available.
+
+## TC-019 Upload Validation Errors
+
+Goal: verify upload rejection rules.
+
+Steps:
+
+1. Upload `.txt` file.
+2. Upload empty `.pdf`.
+3. Upload too-large `.pdf`.
+
+Expected:
+
+- Error messages:
+- `Only PDF uploads are supported`
+- `Uploaded file is empty`
+- `Uploaded file is too large`
+
+## TC-020 Generate Failure Handling
+
+Goal: verify generation failure UX.
+
+Precondition:
+
+- Configure backend so generate can fail (for example invalid upstream LLM setup).
+
+Steps:
+
+1. Upload valid invoice.
+2. Click `Generate suggestion`.
+
+Expected:
+
+- Error banner appears with backend detail.
+- App remains interactive and user can retry.
+
+## TC-021 Refresh And Persistence
+
+Goal: verify server persistence across browser refresh.
+
+Steps:
+
+1. Upload and generate invoice.
+2. Refresh browser tab.
+3. Return to `Invoice Management`.
+
+Expected:
+
+- Invoice still appears in list (fetched via `GET /invoices`).
+- Opening invoice still loads current journal state via `GET /invoices/{id}`.
 
 ## Optional API Sanity Cases (Postman/cURL)
 
 1. `GET /health` returns `{"status":"ok"}`.
-2. `GET /invoices/{random-uuid}` returns `404`.
-3. `POST /invoices/{random-uuid}/generate` returns `404`.
-4. `POST /journal-entries/{random-uuid}/approve` returns `404`.
-5. `POST /journal-entries/{random-uuid}/decline` returns `404`.
+2. `GET /invoices` returns list ordered by newest first.
+3. `GET /invoices/{id}/pdf` returns inline PDF.
+4. `PATCH /journal-entries/{id}` with non-pending entry returns `400`.
+5. `POST /accounts` duplicate `code` returns `409`.
+6. `PATCH /accounts/{id}` with no fields returns `400`.
+7. `DELETE /accounts/{unknown-id}` returns `404`.
 
-## Recommended Execution Order For New QA
+## Recommended Execution Order
 
-1. TC-001
-2. TC-002
-3. TC-003
-4. TC-004
-5. TC-006
-6. TC-007
-7. TC-008
-8. TC-009
-9. TC-010
-10. TC-011
-11. TC-012
+1. TC-001 to TC-005
+2. TC-006 to TC-013
+3. TC-014 to TC-018
+4. TC-019 to TC-021

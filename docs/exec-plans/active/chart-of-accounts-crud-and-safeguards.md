@@ -1,6 +1,6 @@
 # Execution Plan: Chart of Accounts CRUD and Safeguards
 
-Updated: 2026-04-09
+Updated: 2026-04-10
 
 ## Objective
 Implement full chart-of-accounts management so accountants can add, edit, and disable accounts from the UI, with server-side validation and safe behavior for entries that reference those accounts.
@@ -17,25 +17,25 @@ Success criteria:
 - Advanced accounting policy checks beyond required validation.
 
 ## Milestones
-1. Finalize account lifecycle and API contract:
-   - Confirm behavior for disable vs delete (default: soft-disable only).
-   - Define error semantics for duplicate account code and invalid payloads.
-   - Document API shapes in `docs/API.md` and `docs/product-spec.md`.
-2. Implement backend account write endpoints:
-   - Add `POST /accounts`, `PATCH /accounts/{id}`, and deactivate endpoint (`DELETE` or status patch).
-   - Enforce DB-level and service-level validation for uniqueness and required fields.
-   - Return clear, stable 4xx messages for validation failures.
-3. Add repository + route tests:
-   - Test create/edit/disable happy path.
-   - Test duplicate code, non-numeric code, empty name, missing account id.
-   - Test interaction with approve flow when postings reference inactive accounts.
-4. Implement frontend account management UX:
-   - Add create form, inline or modal edit, and disable action.
-   - Show field-level validation and backend error feedback.
-   - Refresh account list and preserve user context after mutations.
-5. Align review-flow behavior:
-   - Ensure review screen clearly indicates inactive-account blocking.
-   - Ensure approve action remains blocked until account issues are resolved.
+1. Completed: finalize account lifecycle and API contract.
+   - `GET/POST/PATCH/DELETE /accounts` is documented in `docs/API.md`.
+   - Deactivation is implemented as soft-delete behavior.
+2. Completed: implement backend account write endpoints.
+   - Create/update/deactivate routes and repository flows are implemented.
+   - Duplicate code and invalid payload paths return clear 4xx responses.
+3. In progress: add repository + route tests.
+   - Some repository validation tests exist.
+   - Route-level and end-to-end CRUD test coverage is still missing.
+4. Completed: implement frontend account management UX.
+   - Add/edit/remove flows are available in `AccountsPanel`.
+   - Client-side validation and backend error surfacing are in place.
+5. Completed: align review-flow behavior.
+   - Approval checks still block when posting accounts are inactive or missing.
+
+## Remaining Work
+- Add API-route tests for account create/update/deactivate and conflict handling.
+- Add integration tests around account deactivation and approval blocking.
+- Align UI wording (`Remove`) with backend semantics (`Deactivate`) to reduce confusion.
 
 ## Validation
 - `python3 scripts/doc_lint.py`
@@ -46,15 +46,14 @@ Success criteria:
 - Create account with valid data.
 - Attempt duplicate code and verify useful error.
 - Edit name/code and confirm persisted update.
-- Disable account used by suggestion and verify approval-block messaging.
+- Deactivate account used by suggestion and verify approval-block messaging.
 
 ## Rollout
-- Land backend API + tests first.
-- Land frontend account management in a follow-up diff.
-- Update docs in the same PR as each behavior change to avoid drift.
-- Keep deactivate behavior feature-flag free for MVP simplicity.
+- Land missing backend/API tests first.
+- Land any UX wording and behavior polish in a follow-up diff.
+- Keep docs updates in the same PR as behavior changes.
 
 ## Risks
-- Ambiguity around delete vs disable causes data-integrity issues.
-- Inactive-account behavior may be inconsistent between frontend pre-check and backend validation.
-- Missing error mapping can make validation failures opaque to users.
+- Missing route-level tests can hide API regressions.
+- Deactivate/remove wording mismatch can mislead users.
+- Inactive-account behavior could drift between frontend checks and backend validation.

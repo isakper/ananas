@@ -91,10 +91,45 @@ class AppRepository:
         return _account_from_row(row)
 
     def create_account(self, code: int, name: str) -> AccountRecord:
-        """Create a chart-of-accounts entry."""
+        """Create a chart-of-accounts entry or reactivate a matching code."""
         try:
             with self._database.connection() as conn:
                 with conn.cursor(row_factory=dict_row) as cur:
+                    cur.execute(
+                        """
+                        SELECT id, code, name, is_active, created_at, updated_at
+                        FROM accounts
+                        WHERE code = %s
+                        """,
+                        (code,),
+                    )
+                    existing_row = cur.fetchone()
+                    if existing_row is not None:
+                        existing_id = _uuid(existing_row["id"])
+                        existing_active = _bool(existing_row["is_active"])
+                        if existing_active:
+                            raise AccountConflictError("Account code already exists")
+                        self._assert_active_account_name_available(
+                            cur,
+                            name=name,
+                            exclude_account_id=existing_id,
+                        )
+                        cur.execute(
+                            """
+                            UPDATE accounts
+                            SET name = %s,
+                                is_active = TRUE
+                            WHERE id = %s
+                            RETURNING id, code, name, is_active, created_at, updated_at
+                            """,
+                            (name, existing_id),
+                        )
+                        row = cur.fetchone()
+                        if row is None:
+                            raise ValueError("Failed to reactivate account")
+                        return _account_from_row(row)
+
+                    self._assert_active_account_name_available(cur, name=name)
                     cur.execute(
                         """
                         INSERT INTO accounts (code, name, is_active)
@@ -126,6 +161,17 @@ class AppRepository:
                     current = self._load_account_row(cur, account_id)
                     if current is None:
                         return None
+
+                    next_name = name if name is not None else _str(current["name"])
+                    next_is_active = (
+                        is_active if is_active is not None else _bool(current["is_active"])
+                    )
+                    if next_is_active:
+                        self._assert_active_account_name_available(
+                            cur,
+                            name=next_name,
+                            exclude_account_id=account_id,
+                        )
 
                     if is_active is False:
                         current_is_active = _bool(current["is_active"])
@@ -174,26 +220,52 @@ class AppRepository:
         original_filename: str,
         mime_type: str,
         file_path: str,
+        content_hash: str | None,
     ) -> InvoiceRecord:
         """Create and return an uploaded invoice row."""
         with self._database.connection() as conn:
             with conn.cursor(row_factory=dict_row) as cur:
+                duplicate_of_invoice_id: UUID | None = None
+                if content_hash is not None and content_hash != "":
+                    cur.execute(
+                        """
+                        SELECT id
+                        FROM invoices
+                        WHERE content_hash = %s
+                        ORDER BY created_at ASC
+                        LIMIT 1
+                        """,
+                        (content_hash,),
+                    )
+                    duplicate_row = cur.fetchone()
+                    if duplicate_row is not None:
+                        duplicate_of_invoice_id = _uuid(duplicate_row["id"])
+
                 cur.execute(
                     """
                     INSERT INTO invoices (
                         original_filename,
                         mime_type,
                         file_path,
+                        content_hash,
+                        duplicate_of_invoice_id,
                         extracted_text,
                         generation_status,
                         generation_error,
                         generated_at
                     )
-                    VALUES (%s, %s, %s, NULL, 'uploaded', NULL, NULL)
-                    RETURNING id, original_filename, mime_type, file_path, extracted_text,
+                    VALUES (%s, %s, %s, %s, %s, NULL, 'uploaded', NULL, NULL)
+                    RETURNING id, original_filename, mime_type, file_path,
+                              content_hash, duplicate_of_invoice_id, extracted_text,
                               generation_status, generation_error, generated_at, created_at, updated_at
                     """,
-                    (original_filename, mime_type, file_path),
+                    (
+                        original_filename,
+                        mime_type,
+                        file_path,
+                        content_hash,
+                        duplicate_of_invoice_id,
+                    ),
                 )
                 invoice_row = cur.fetchone()
                 if invoice_row is None:
@@ -206,7 +278,8 @@ class AppRepository:
             with conn.cursor(row_factory=dict_row) as cur:
                 cur.execute(
                     """
-                    SELECT id, original_filename, mime_type, file_path, extracted_text,
+                    SELECT id, original_filename, mime_type, file_path,
+                           content_hash, duplicate_of_invoice_id, extracted_text,
                            generation_status, generation_error, generated_at, created_at, updated_at
                     FROM invoices
                     WHERE id = %s
@@ -224,7 +297,8 @@ class AppRepository:
             with conn.cursor(row_factory=dict_row) as cur:
                 cur.execute(
                     """
-                    SELECT id, original_filename, mime_type, file_path, extracted_text,
+                    SELECT id, original_filename, mime_type, file_path,
+                           content_hash, duplicate_of_invoice_id, extracted_text,
                            generation_status, generation_error, generated_at, created_at, updated_at
                     FROM invoices
                     ORDER BY created_at DESC
@@ -239,7 +313,8 @@ class AppRepository:
             with conn.cursor(row_factory=dict_row) as cur:
                 cur.execute(
                     """
-                    SELECT id, original_filename, mime_type, file_path, extracted_text,
+                    SELECT id, original_filename, mime_type, file_path,
+                           content_hash, duplicate_of_invoice_id, extracted_text,
                            generation_status, generation_error, generated_at, created_at, updated_at
                     FROM invoices
                     WHERE id = %s
@@ -278,7 +353,8 @@ class AppRepository:
                     UPDATE invoices
                     SET extracted_text = %s
                     WHERE id = %s
-                    RETURNING id, original_filename, mime_type, file_path, extracted_text,
+                    RETURNING id, original_filename, mime_type, file_path,
+                              content_hash, duplicate_of_invoice_id, extracted_text,
                               generation_status, generation_error, generated_at, created_at, updated_at
                     """,
                     (markdown, invoice_id),
@@ -453,6 +529,10 @@ class AppRepository:
                     raise ValueError("Journal entry has no postings")
 
                 if status == "approved":
+                    self._assert_invoice_not_duplicate_for_approval(
+                        cur,
+                        invoice_id=_uuid(current_entry_row["invoice_id"]),
+                    )
                     self._validate_accounts_for_postings(cur, postings)
                     amounts = [
                         PostingAmounts(
@@ -660,6 +740,62 @@ class AppRepository:
         if valid_count != len(account_ids):
             raise ValueError("Journal entry references missing or inactive accounts")
 
+    def _assert_active_account_name_available(
+        self,
+        cur: Any,
+        name: str,
+        exclude_account_id: UUID | None = None,
+    ) -> None:
+        if exclude_account_id is None:
+            cur.execute(
+                """
+                SELECT id
+                FROM accounts
+                WHERE LOWER(name) = LOWER(%s)
+                  AND is_active = TRUE
+                LIMIT 1
+                """,
+                (name,),
+            )
+        else:
+            cur.execute(
+                """
+                SELECT id
+                FROM accounts
+                WHERE LOWER(name) = LOWER(%s)
+                  AND is_active = TRUE
+                  AND id <> %s
+                LIMIT 1
+                """,
+                (name, exclude_account_id),
+            )
+
+        row = cur.fetchone()
+        if row is not None:
+            raise AccountConflictError("Account name already exists")
+
+    def _assert_invoice_not_duplicate_for_approval(
+        self, cur: Any, invoice_id: UUID
+    ) -> None:
+        cur.execute(
+            """
+            SELECT duplicate_of_invoice_id
+            FROM invoices
+            WHERE id = %s
+            """,
+            (invoice_id,),
+        )
+        row = cur.fetchone()
+        if row is None:
+            raise ValueError("Invoice not found for journal entry")
+
+        duplicate_of = row["duplicate_of_invoice_id"]
+        if duplicate_of is not None:
+            duplicate_id = _uuid(duplicate_of)
+            raise ValueError(
+                f"Approval blocked: invoice is marked duplicate of {duplicate_id}"
+            )
+
     def _load_account_row(self, cur: Any, account_id: UUID) -> dict[str, Any] | None:
         cur.execute(
             """
@@ -708,6 +844,20 @@ def _account_from_row(row: dict[str, Any]) -> AccountRecord:
 
 
 def _invoice_from_row(row: dict[str, Any]) -> InvoiceRecord:
+    content_hash_raw = row["content_hash"]
+    content_hash: str | None
+    if content_hash_raw is None:
+        content_hash = None
+    else:
+        content_hash = _str(content_hash_raw)
+
+    duplicate_of_raw = row["duplicate_of_invoice_id"]
+    duplicate_of_invoice_id: UUID | None
+    if duplicate_of_raw is None:
+        duplicate_of_invoice_id = None
+    else:
+        duplicate_of_invoice_id = _uuid(duplicate_of_raw)
+
     extracted: str | None
     extracted_raw = row["extracted_text"]
     if extracted_raw is None:
@@ -727,6 +877,8 @@ def _invoice_from_row(row: dict[str, Any]) -> InvoiceRecord:
         original_filename=_str(row["original_filename"]),
         mime_type=_str(row["mime_type"]),
         file_path=_str(row["file_path"]),
+        content_hash=content_hash,
+        duplicate_of_invoice_id=duplicate_of_invoice_id,
         extracted_text=extracted,
         generation_status=_str(row["generation_status"]),
         generation_error=generation_error,

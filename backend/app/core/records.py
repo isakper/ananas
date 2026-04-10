@@ -28,6 +28,8 @@ class InvoiceRecord:
     original_filename: str
     mime_type: str
     file_path: str
+    content_hash: str | None
+    duplicate_of_invoice_id: UUID | None
     extracted_text: str | None
     generation_status: str
     generation_error: str | None

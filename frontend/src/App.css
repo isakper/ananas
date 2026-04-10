@@ -111,7 +111,7 @@ h2 {
 
 .invoice-management-top {
   display: grid;
-  grid-template-columns: minmax(0, 1.55fr) minmax(320px, 1fr);
+  grid-template-columns: 1fr;
   align-items: start;
   gap: 1rem;
 }
@@ -122,6 +122,60 @@ h2 {
 
 .invoice-list-group + .invoice-list-group {
   margin-top: 1rem;
+}
+
+.invoice-list-panel .invoice-table {
+  width: 100%;
+  min-width: 900px;
+  table-layout: fixed;
+}
+
+.invoice-list-panel .invoice-col-id {
+  width: 90px;
+}
+
+.invoice-list-panel .invoice-col-name {
+  width: 230px;
+}
+
+.invoice-list-panel .invoice-col-status {
+  width: 150px;
+}
+
+.invoice-list-panel .invoice-col-updated {
+  width: 170px;
+}
+
+.invoice-list-panel .invoice-col-action {
+  width: 100px;
+}
+
+.invoice-list-panel .invoice-id-cell,
+.invoice-list-panel .invoice-status-cell,
+.invoice-list-panel .invoice-action-cell {
+  white-space: nowrap;
+}
+
+.invoice-list-panel .invoice-name-cell {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.invoice-list-panel .invoice-updated-cell {
+  white-space: nowrap;
+}
+
+.invoice-list-panel .invoice-flag-cell {
+  overflow-wrap: anywhere;
+}
+
+.invoice-list-panel .invoice-id-cell code {
+  font-family: 'IBM Plex Mono', ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas,
+    'Liberation Mono', 'Courier New', monospace;
+  font-size: 0.82rem;
+  color: var(--ink-muted);
+  font-variant-numeric: tabular-nums;
 }
 
 .left-column {
@@ -239,6 +293,9 @@ input[type='text'],
 }
 
 .status-pill {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
   font-size: 0.75rem;
   text-transform: uppercase;
   letter-spacing: 0.09em;
@@ -246,6 +303,7 @@ input[type='text'],
   border-radius: 999px;
   border: 1px solid transparent;
   font-weight: 700;
+  min-width: 6.5rem;
 }
 
 .status-pill--pending {

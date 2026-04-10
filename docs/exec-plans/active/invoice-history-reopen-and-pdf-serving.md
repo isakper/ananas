@@ -1,6 +1,6 @@
 # Execution Plan: Invoice History, Reopen, and PDF Serving
 
-Updated: 2026-04-09
+Updated: 2026-04-10
 
 ## Objective
 Enable accountants to revisit prior invoices and continue review work by adding invoice history, persistent invoice loading, and backend-served PDF rendering.
@@ -17,25 +17,25 @@ Success criteria:
 - Document storage migration to cloud object storage.
 
 ## Milestones
-1. Define listing and file-access API contract:
-   - Add `GET /invoices` list endpoint with core metadata and status fields.
-   - Add secure local `GET /invoices/{id}/file` streaming endpoint for PDF preview.
-   - Document response contracts and error behavior.
-2. Implement backend endpoints and repository methods:
-   - Add invoice listing query sorted by newest first.
-   - Add file-response guardrails (invoice existence, path safety, file existence handling).
-   - Ensure invoice status fields (`uploaded/generating/ready/failed`) are returned consistently.
-3. Add backend tests:
-   - Invoice list shape and sorting.
-   - File endpoint for valid invoice, missing invoice, and missing file edge cases.
-   - Bundle reload regression checks via `GET /invoices/{id}`.
-4. Implement frontend history UX:
-   - Add invoice history panel/table with status pills and timestamps.
-   - Allow selecting invoice to load full bundle into review panel.
-   - Switch PDF viewer from blob-only URL to backend file URL for persisted viewing.
-5. Surface status/error state clearly:
-   - Show generation status and error details in the selected invoice context.
-   - Preserve selected invoice after account-tab navigation when possible.
+1. Completed: define listing and file-access API contract.
+   - `GET /invoices` and file serving are implemented.
+   - File endpoint is implemented as `GET /invoices/{invoice_id}/pdf`.
+2. In progress: implement backend endpoints and repository methods.
+   - Invoice listing and PDF serving are implemented.
+   - Additional path-safety hardening and edge-case handling should be tightened.
+3. Not started: add backend tests.
+   - No dedicated route-level tests cover invoice list/PDF paths yet.
+4. Completed: implement frontend history UX.
+   - Invoice management screen lists pending/processed invoices.
+   - Users can reopen invoices and render persisted PDFs in review.
+5. In progress: surface status/error state clearly.
+   - Basic load/reopen flow works.
+   - Generation status/error details are not yet surfaced per invoice in a clear persistent way.
+
+## Remaining Work
+- Add backend tests for list ordering and PDF endpoint edge cases.
+- Expose and render `generation_status` and `generation_error` prominently per invoice.
+- Add stronger file-path safety checks for stored invoice paths.
 
 ## Validation
 - `python3 scripts/doc_lint.py`
@@ -48,12 +48,11 @@ Success criteria:
 - Trigger generation failure and confirm persistent error visibility.
 
 ## Rollout
-- Ship backend list/file APIs and tests first.
-- Ship frontend history selection and PDF rendering next.
-- Keep old blob-preview path as temporary fallback only during transition.
-- Remove fallback once backend file serving is stable.
+- Land backend tests and path-safety hardening first.
+- Land per-invoice generation status/error UI improvements next.
+- Keep endpoint naming stable (`/pdf`) unless there is a deliberate API-versioning decision.
 
 ## Risks
-- Unsafe file-path handling can introduce security issues.
-- Large PDFs can degrade UI performance if rendering strategy is naive.
+- Insufficient file-path guardrails can create security risk.
+- Missing per-invoice status visibility can make failures hard to recover from.
 - State synchronization bugs may show stale invoice/journal bundles after switching.
