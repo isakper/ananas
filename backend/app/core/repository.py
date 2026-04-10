@@ -345,12 +345,19 @@ class AppRepository:
             with conn.cursor(row_factory=dict_row) as cur:
                 duplicate_of_invoice_id: UUID | None = None
                 if content_hash is not None and content_hash != "":
+                    # Serialize uploads for the same hash to avoid duplicate-detection races.
+                    cur.execute(
+                        """
+                        SELECT pg_advisory_xact_lock(hashtextextended(%s, 0))
+                        """,
+                        (content_hash,),
+                    )
                     cur.execute(
                         """
                         SELECT id
                         FROM invoices
                         WHERE content_hash = %s
-                        ORDER BY created_at ASC
+                        ORDER BY created_at ASC, id ASC
                         LIMIT 1
                         """,
                         (content_hash,),
