@@ -8,15 +8,13 @@ import { JournalReviewPanel } from './features/journal-review/JournalReviewPanel
 import {
   ApiError,
   approveJournalEntry,
-  createAccount as createAccountRequest,
   declineJournalEntry,
   getInvoice,
   generateJournalEntry,
   listAccounts,
   listInvoices,
-  removeAccount as removeAccountRequest,
+  saveAccountsBulk,
   updateJournalEntry as updateJournalEntryRequest,
-  updateAccount as updateAccountRequest,
   uploadInvoice,
 } from './lib/api/client'
 import type { Account, InvoiceBundle, JournalPostingUpdateInput } from './lib/types/api'
@@ -167,7 +165,7 @@ function App() {
       return sorted
     } catch (error) {
       setErrorMessage(toErrorMessage(error))
-      return []
+      throw error
     } finally {
       setIsLoadingAccounts(false)
     }
@@ -206,7 +204,7 @@ function App() {
   }, [])
 
   useEffect(() => {
-    void refreshAccounts()
+    void refreshAccounts().catch(() => undefined)
   }, [refreshAccounts])
 
   useEffect(() => {
@@ -349,13 +347,6 @@ function App() {
     if (entryId === undefined || selectedBundle === null) {
       return
     }
-    const duplicateOfInvoiceId = selectedBundle.invoice.duplicate_of_invoice_id
-    if (duplicateOfInvoiceId !== null) {
-      setErrorMessage(
-        `Approval blocked: invoice is flagged as duplicate of ${shortId(duplicateOfInvoiceId)}.`,
-      )
-      return
-    }
 
     setErrorMessage(null)
     setIsApproving(true)
@@ -397,49 +388,21 @@ function App() {
     }
   }
 
-  async function handleCreateAccount(input: { code: number; name: string }) {
+  async function handleSaveAccountSnapshot(input: { code: number; name: string }[]) {
     setErrorMessage(null)
     setIsMutatingAccounts(true)
+    let snapshotSaved = false
     try {
-      const created = await createAccountRequest({
-        code: input.code,
-        name: input.name,
-        is_active: true,
-      })
-      setAccounts((current) => sortAccounts([...current, created]))
+      await saveAccountsBulk(input)
+      snapshotSaved = true
+      return await refreshAccounts()
     } catch (error) {
-      setErrorMessage(toErrorMessage(error))
-    } finally {
-      setIsMutatingAccounts(false)
-    }
-  }
-
-  async function handleUpdateAccount(accountId: string, input: { code: number; name: string }) {
-    setErrorMessage(null)
-    setIsMutatingAccounts(true)
-    try {
-      const updated = await updateAccountRequest(accountId, {
-        code: input.code,
-        name: input.name,
-      })
-      setAccounts((current) =>
-        sortAccounts(current.map((account) => (account.id === accountId ? updated : account))),
-      )
-    } catch (error) {
-      setErrorMessage(toErrorMessage(error))
-    } finally {
-      setIsMutatingAccounts(false)
-    }
-  }
-
-  async function handleRemoveAccount(accountId: string) {
-    setErrorMessage(null)
-    setIsMutatingAccounts(true)
-    try {
-      await removeAccountRequest(accountId)
-      setAccounts((current) => current.filter((account) => account.id !== accountId))
-    } catch (error) {
-      setErrorMessage(toErrorMessage(error))
+      const detail = toErrorMessage(error)
+      const message = snapshotSaved
+        ? `Chart of accounts saved, but failed to sync latest state. ${detail}`
+        : detail
+      setErrorMessage(message)
+      throw new Error(message)
     } finally {
       setIsMutatingAccounts(false)
     }
@@ -628,10 +591,7 @@ function App() {
             accounts={accounts}
             isLoading={isLoadingAccounts}
             isMutating={isMutatingAccounts}
-            onCreate={handleCreateAccount}
-            onRefresh={refreshAccounts}
-            onRemove={handleRemoveAccount}
-            onUpdate={handleUpdateAccount}
+            onSaveSnapshot={handleSaveAccountSnapshot}
             onUnsavedChangesChange={setHasUnsavedAccountChanges}
           />
         </main>

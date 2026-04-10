@@ -2,17 +2,22 @@
 
 from __future__ import annotations
 
+from uuid import UUID
+
 from fastapi import APIRouter, Depends, HTTPException
 
 from backend.app.api.deps import get_repository
 from backend.app.api.schemas import (
+    AccountBulkSaveRequest,
     AccountCreateRequest,
     AccountResponse,
+    AccountSnapshotItemRequest,
     AccountUpdateRequest,
 )
 from backend.app.core.repository import (
     AccountConflictError,
     AccountInUseError,
+    AccountSnapshotItem,
     AppRepository,
 )
 
@@ -97,6 +102,24 @@ def deactivate_account(
     return AccountResponse.from_record(record)
 
 
+@router.put("/accounts/bulk", response_model=list[AccountResponse])
+def save_accounts_bulk(
+    payload: AccountBulkSaveRequest,
+    repository: AppRepository = Depends(get_repository),
+) -> list[AccountResponse]:
+    """Atomically replace the active chart of accounts with a provided snapshot."""
+    items = _validated_snapshot_items(payload.accounts)
+    try:
+        records = repository.save_accounts_snapshot(items)
+    except AccountInUseError as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
+    except AccountConflictError as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    return [AccountResponse.from_record(record) for record in records]
+
+
 def _normalized_name(value: str | None) -> str | None:
     if value is None:
         return None
@@ -106,10 +129,25 @@ def _normalized_name(value: str | None) -> str | None:
     return name
 
 
-def _parse_uuid(value: str):
-    from uuid import UUID
-
+def _parse_uuid(value: str) -> UUID:
     try:
         return UUID(value)
     except ValueError as exc:
         raise HTTPException(status_code=400, detail="Invalid account id") from exc
+
+
+def _validated_snapshot_items(
+    items: list[AccountSnapshotItemRequest],
+) -> list[AccountSnapshotItem]:
+    if len(items) == 0:
+        raise HTTPException(status_code=400, detail="At least one account is required")
+
+    validated: list[AccountSnapshotItem] = []
+    for item in items:
+        if item.code <= 0:
+            raise HTTPException(status_code=400, detail="Account code must be positive")
+        name = _normalized_name(item.name)
+        if name is None:
+            raise HTTPException(status_code=400, detail="Account name is required")
+        validated.append(AccountSnapshotItem(code=item.code, name=name))
+    return validated

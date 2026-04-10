@@ -45,7 +45,9 @@ class _RepoStub:
         self.started = True
         return True
 
-    def save_invoice_markdown(self, invoice_id: UUID, markdown: str) -> InvoiceRecord | None:
+    def save_invoice_markdown(
+        self, invoice_id: UUID, markdown: str
+    ) -> InvoiceRecord | None:
         if self.invoice is None or self.invoice.id != invoice_id:
             return None
         self.invoice = InvoiceRecord(
@@ -152,7 +154,9 @@ class _RepoStub:
 
 
 class _ExtractionServiceStub:
-    def __init__(self, markdown: str = "# Invoice", raises: Exception | None = None) -> None:
+    def __init__(
+        self, markdown: str = "# Invoice", raises: Exception | None = None
+    ) -> None:
         self.markdown = markdown
         self.raises = raises
 

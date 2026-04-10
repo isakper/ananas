@@ -13,6 +13,7 @@ from psycopg.rows import dict_row
 from backend.app.accounting.service import PostingAmounts, calculate_totals, is_balanced
 from backend.app.accounting.types import SuggestedPosting
 from backend.app.core.db import Database
+from backend.app.core.default_accounts import DEFAULT_ACCOUNTS
 from backend.app.core.records import (
     AccountRecord,
     InvoiceBundleRecord,
@@ -45,12 +46,24 @@ class PostingUpdate:
     credit_amount: Decimal
 
 
+@dataclass(frozen=True)
+class AccountSnapshotItem:
+    """Desired active account state item for bulk save operations."""
+
+    code: int
+    name: str
+
+
 class AccountConflictError(ValueError):
     """Raised when account uniqueness constraints are violated."""
 
 
 class AccountInUseError(ValueError):
     """Raised when attempting to deactivate an account used by approved entries."""
+
+
+ACCOUNT_CODE_CONSTRAINT_NAMES = {"accounts_code_key"}
+ACCOUNT_NAME_CONSTRAINT_NAMES = {"accounts_active_name_unique_idx"}
 
 
 class AppRepository:
@@ -72,6 +85,23 @@ class AppRepository:
                 )
                 rows = cur.fetchall()
         return [_account_from_row(row) for row in rows]
+
+    def ensure_default_accounts(self) -> None:
+        """Ensure default accounts exist and are active on service startup."""
+        with self._database.connection() as conn:
+            with conn.cursor() as cur:
+                for code, name in DEFAULT_ACCOUNTS:
+                    cur.execute(
+                        """
+                        INSERT INTO accounts (code, name, is_active)
+                        VALUES (%s, %s, TRUE)
+                        ON CONFLICT (code) DO UPDATE
+                        SET
+                          name = EXCLUDED.name,
+                          is_active = TRUE
+                        """,
+                        (code, name),
+                    )
 
     def get_account(self, account_id: UUID) -> AccountRecord | None:
         """Return chart-of-accounts row by id."""
@@ -140,8 +170,9 @@ class AppRepository:
                     )
                     row = cur.fetchone()
         except Exception as exc:
-            if _is_unique_violation(exc):
-                raise AccountConflictError("Account code already exists") from exc
+            conflict_error = _account_conflict_error_from_exception(exc)
+            if conflict_error is not None:
+                raise conflict_error from exc
             raise
         if row is None:
             raise ValueError("Failed to create account")
@@ -164,7 +195,9 @@ class AppRepository:
 
                     next_name = name if name is not None else _str(current["name"])
                     next_is_active = (
-                        is_active if is_active is not None else _bool(current["is_active"])
+                        is_active
+                        if is_active is not None
+                        else _bool(current["is_active"])
                     )
                     if next_is_active:
                         self._assert_active_account_name_available(
@@ -198,8 +231,9 @@ class AppRepository:
         except Exception as exc:
             if isinstance(exc, AccountInUseError):
                 raise
-            if _is_unique_violation(exc):
-                raise AccountConflictError("Account code already exists") from exc
+            conflict_error = _account_conflict_error_from_exception(exc)
+            if conflict_error is not None:
+                raise conflict_error from exc
             raise
 
         if row is None:
@@ -215,6 +249,119 @@ class AppRepository:
             is_active=False,
         )
 
+    def save_accounts_snapshot(
+        self, accounts: list[AccountSnapshotItem]
+    ) -> list[AccountRecord]:
+        """Atomically replace the active chart of accounts with the provided snapshot."""
+        if len(accounts) == 0:
+            raise ValueError("At least one account is required")
+
+        seen_codes: set[int] = set()
+        seen_names: set[str] = set()
+        for account in accounts:
+            if account.code in seen_codes:
+                raise AccountConflictError(f"Duplicate account code: {account.code}")
+            seen_codes.add(account.code)
+
+            normalized_name = account.name.strip().lower()
+            if normalized_name in seen_names:
+                raise AccountConflictError(
+                    f"Duplicate account name: {account.name.strip()}"
+                )
+            seen_names.add(normalized_name)
+
+        desired_by_code = {account.code: account for account in accounts}
+        desired_codes = set(desired_by_code.keys())
+
+        try:
+            with self._database.connection() as conn:
+                with conn.cursor(row_factory=dict_row) as cur:
+                    cur.execute(
+                        """
+                        SELECT id, code, name, is_active, created_at, updated_at
+                        FROM accounts
+                        ORDER BY code
+                        """
+                    )
+                    rows = cur.fetchall()
+                    rows_by_code = {_int(row["code"]): row for row in rows}
+                    active_rows = [row for row in rows if _bool(row["is_active"])]
+
+                    for row in active_rows:
+                        code = _int(row["code"])
+                        if code in desired_codes:
+                            continue
+                        account_id = _uuid(row["id"])
+                        if self._account_used_in_approved_entries(cur, account_id):
+                            raise AccountInUseError(
+                                f"Account {code} is used by an approved journal entry"
+                            )
+
+                    for row in active_rows:
+                        code = _int(row["code"])
+                        if code in desired_codes:
+                            continue
+                        cur.execute(
+                            """
+                            UPDATE accounts
+                            SET is_active = FALSE
+                            WHERE id = %s
+                            """,
+                            (_uuid(row["id"]),),
+                        )
+
+                    for item in accounts:
+                        existing_row = rows_by_code.get(item.code)
+                        if existing_row is None:
+                            cur.execute(
+                                """
+                                INSERT INTO accounts (code, name, is_active)
+                                VALUES (%s, %s, TRUE)
+                                RETURNING id, code, name, is_active, created_at, updated_at
+                                """,
+                                (item.code, item.name),
+                            )
+                            inserted = cur.fetchone()
+                            if inserted is None:
+                                raise ValueError(
+                                    "Failed to create account in bulk save"
+                                )
+                            rows_by_code[item.code] = inserted
+                            continue
+
+                        cur.execute(
+                            """
+                            UPDATE accounts
+                            SET name = %s,
+                                is_active = TRUE
+                            WHERE id = %s
+                            RETURNING id, code, name, is_active, created_at, updated_at
+                            """,
+                            (item.name, _uuid(existing_row["id"])),
+                        )
+                        updated = cur.fetchone()
+                        if updated is None:
+                            raise ValueError("Failed to update account in bulk save")
+                        rows_by_code[item.code] = updated
+
+                    cur.execute(
+                        """
+                        SELECT id, code, name, is_active, created_at, updated_at
+                        FROM accounts
+                        ORDER BY code
+                        """
+                    )
+                    final_rows = cur.fetchall()
+        except Exception as exc:
+            if isinstance(exc, AccountConflictError | AccountInUseError):
+                raise
+            conflict_error = _account_conflict_error_from_exception(exc)
+            if conflict_error is not None:
+                raise conflict_error from exc
+            raise
+
+        return [_account_from_row(row) for row in final_rows]
+
     def create_invoice(
         self,
         original_filename: str,
@@ -227,12 +374,19 @@ class AppRepository:
             with conn.cursor(row_factory=dict_row) as cur:
                 duplicate_of_invoice_id: UUID | None = None
                 if content_hash is not None and content_hash != "":
+                    # Serialize uploads for the same hash to avoid duplicate-detection races.
+                    cur.execute(
+                        """
+                        SELECT pg_advisory_xact_lock(hashtextextended(%s, 0))
+                        """,
+                        (content_hash,),
+                    )
                     cur.execute(
                         """
                         SELECT id
                         FROM invoices
                         WHERE content_hash = %s
-                        ORDER BY created_at ASC
+                        ORDER BY created_at ASC, id ASC
                         LIMIT 1
                         """,
                         (content_hash,),
@@ -423,8 +577,6 @@ class AppRepository:
             PostingAmounts(debit=posting.debit_amount, credit=posting.credit_amount)
             for posting in postings
         ]
-        if not is_balanced(amounts):
-            raise ValueError("Suggested journal entry is not balanced")
         total_debit, total_credit = calculate_totals(amounts)
 
         with self._database.connection() as conn:
@@ -779,9 +931,10 @@ class AppRepository:
     ) -> None:
         cur.execute(
             """
-            SELECT duplicate_of_invoice_id
+            SELECT content_hash
             FROM invoices
             WHERE id = %s
+            FOR UPDATE
             """,
             (invoice_id,),
         )
@@ -789,11 +942,44 @@ class AppRepository:
         if row is None:
             raise ValueError("Invoice not found for journal entry")
 
-        duplicate_of = row["duplicate_of_invoice_id"]
-        if duplicate_of is not None:
-            duplicate_id = _uuid(duplicate_of)
+        content_hash_raw = row["content_hash"]
+        if content_hash_raw is None:
+            return
+        content_hash = _str(content_hash_raw)
+        if content_hash == "":
+            return
+
+        # Lock whole duplicate group so concurrent approvals cannot pass together.
+        cur.execute(
+            """
+            SELECT id
+            FROM invoices
+            WHERE content_hash = %s
+            FOR UPDATE
+            """,
+            (content_hash,),
+        )
+
+        cur.execute(
+            """
+            SELECT i.id AS approved_invoice_id
+            FROM invoices i
+            JOIN journal_entries je
+              ON je.invoice_id = i.id
+            WHERE i.content_hash = %s
+              AND i.id <> %s
+              AND je.status = 'approved'
+            ORDER BY je.decided_at ASC NULLS LAST, je.updated_at ASC, je.id ASC
+            LIMIT 1
+            """,
+            (content_hash, invoice_id),
+        )
+        approved_row = cur.fetchone()
+        if approved_row is not None:
+            approved_invoice_id = _uuid(approved_row["approved_invoice_id"])
             raise ValueError(
-                f"Approval blocked: invoice is marked duplicate of {duplicate_id}"
+                "Approval blocked: duplicate invoice group already approved by "
+                f"{approved_invoice_id}"
             )
 
     def _load_account_row(self, cur: Any, account_id: UUID) -> dict[str, Any] | None:
@@ -968,5 +1154,37 @@ def _datetime(value: Any) -> datetime:
 
 
 def _is_unique_violation(exc: Exception) -> bool:
+    if _unique_violation_constraint_name(exc) is not None:
+        return True
     message = str(exc).lower()
     return "duplicate key value violates unique constraint" in message
+
+
+def _unique_violation_constraint_name(exc: Exception) -> str | None:
+    current: BaseException | None = exc
+    while current is not None:
+        sqlstate = getattr(current, "sqlstate", None)
+        if sqlstate == "23505":
+            diag = getattr(current, "diag", None)
+            constraint_name = getattr(diag, "constraint_name", None)
+            if isinstance(constraint_name, str) and constraint_name.strip() != "":
+                return constraint_name.strip()
+            return ""
+        current = current.__cause__
+    return None
+
+
+def _account_conflict_error_from_exception(
+    exc: Exception,
+) -> AccountConflictError | None:
+    constraint_name = _unique_violation_constraint_name(exc)
+    if constraint_name is None:
+        if _is_unique_violation(exc):
+            return AccountConflictError("Account code or name already exists")
+        return None
+
+    if constraint_name in ACCOUNT_CODE_CONSTRAINT_NAMES:
+        return AccountConflictError("Account code already exists")
+    if constraint_name in ACCOUNT_NAME_CONSTRAINT_NAMES:
+        return AccountConflictError("Account name already exists")
+    return AccountConflictError("Account code or name already exists")
