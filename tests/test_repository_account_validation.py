@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from datetime import UTC, datetime
 from decimal import Decimal
-from uuid import uuid4
+from uuid import UUID, uuid4
 
 import pytest
 
@@ -56,7 +56,7 @@ class _InvoiceDuplicateCursorStub:
         return None
 
 
-def _posting(account_id, line_no: int) -> JournalPostingRecord:
+def _posting(account_id: UUID, line_no: int) -> JournalPostingRecord:
     now = datetime.now(tz=UTC)
     return JournalPostingRecord(
         id=uuid4(),
@@ -176,7 +176,9 @@ def test_duplicate_approval_check_rejects_when_group_already_approved() -> None:
     )
 
     with pytest.raises(ValueError, match="already approved"):
-        repository._assert_invoice_not_duplicate_for_approval(cursor, invoice_id=uuid4())
+        repository._assert_invoice_not_duplicate_for_approval(
+            cursor, invoice_id=uuid4()
+        )
 
 
 def test_duplicate_approval_check_rejects_missing_invoice_row() -> None:
@@ -184,4 +186,6 @@ def test_duplicate_approval_check_rejects_missing_invoice_row() -> None:
     cursor = _InvoiceDuplicateCursorStub(has_row=False)
 
     with pytest.raises(ValueError, match="Invoice not found"):
-        repository._assert_invoice_not_duplicate_for_approval(cursor, invoice_id=uuid4())
+        repository._assert_invoice_not_duplicate_for_approval(
+            cursor, invoice_id=uuid4()
+        )

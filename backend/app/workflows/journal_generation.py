@@ -3,15 +3,36 @@
 from __future__ import annotations
 
 from pathlib import Path
-from typing import TYPE_CHECKING
+from typing import Protocol
 from uuid import UUID
 
-from backend.app.accounting.journal_generation_service import JournalGenerationService
-from backend.app.core.records import InvoiceBundleRecord
-from backend.app.documents.service import DocumentExtractionService
+from backend.app.accounting.types import SuggestedPosting
+from backend.app.core.records import AccountRecord, InvoiceBundleRecord, InvoiceRecord
 
-if TYPE_CHECKING:
-    from backend.app.core.repository import AppRepository
+
+class Repository(Protocol):
+    def get_invoice(self, invoice_id: UUID) -> InvoiceRecord | None: ...
+    def mark_invoice_generation_started(self, invoice_id: UUID) -> bool: ...
+    def save_invoice_markdown(
+        self, invoice_id: UUID, markdown: str
+    ) -> InvoiceRecord | None: ...
+    def list_accounts(self) -> list[AccountRecord]: ...
+    def replace_suggested_journal_entry(
+        self, invoice_id: UUID, postings: list[SuggestedPosting]
+    ) -> object: ...
+    def mark_invoice_generation_ready(self, invoice_id: UUID) -> bool: ...
+    def mark_invoice_generation_failed(self, invoice_id: UUID, error: str) -> bool: ...
+    def get_invoice_bundle(self, invoice_id: UUID) -> InvoiceBundleRecord | None: ...
+
+
+class ExtractionService(Protocol):
+    def extract_markdown(self, pdf_path: Path) -> str: ...
+
+
+class PostingGenerationService(Protocol):
+    def generate_postings(
+        self, markdown: str, accounts: list[AccountRecord]
+    ) -> list[SuggestedPosting]: ...
 
 
 class InvoiceNotFoundError(Exception):
@@ -23,9 +44,9 @@ class JournalGenerationWorkflow:
 
     def __init__(
         self,
-        repository: AppRepository,
-        extraction_service: DocumentExtractionService,
-        journal_generation_service: JournalGenerationService,
+        repository: Repository,
+        extraction_service: ExtractionService,
+        journal_generation_service: PostingGenerationService,
     ) -> None:
         self._repository = repository
         self._extraction_service = extraction_service

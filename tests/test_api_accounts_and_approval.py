@@ -42,7 +42,7 @@ def _candidate_database_urls() -> list[str]:
     return [value for value in values if value != ""]
 
 
-@pytest.fixture(scope="session")
+@pytest.fixture(scope="session")  # type: ignore[misc]
 def database_url() -> str:
     for candidate in _candidate_database_urls():
         try:
@@ -54,14 +54,15 @@ def database_url() -> str:
     pytest.skip(
         "PostgreSQL is not available. Set TEST_DATABASE_URL or start local Postgres."
     )
+    raise RuntimeError("unreachable")
 
 
-@pytest.fixture(scope="session")
+@pytest.fixture(scope="session")  # type: ignore[misc]
 def repository(database_url: str) -> AppRepository:
     return AppRepository(Database(database_url))
 
 
-@pytest.fixture(scope="session", autouse=True)
+@pytest.fixture(scope="session", autouse=True)  # type: ignore[misc]
 def assert_required_tables(database_url: str) -> None:
     required_tables = {"accounts", "invoices", "journal_entries", "journal_postings"}
     with psycopg.connect(database_url) as conn:
@@ -75,9 +76,7 @@ def assert_required_tables(database_url: str) -> None:
             )
             rows = cur.fetchall()
 
-    discovered = {
-        row[0] for row in rows if isinstance(row, tuple) and len(row) > 0
-    }
+    discovered = {row[0] for row in rows if isinstance(row, tuple) and len(row) > 0}
     missing = required_tables - discovered
     if missing:
         pytest.skip(
@@ -86,7 +85,7 @@ def assert_required_tables(database_url: str) -> None:
         )
 
 
-@pytest.fixture(autouse=True)
+@pytest.fixture(autouse=True)  # type: ignore[misc]
 def clean_database(database_url: str) -> Iterator[None]:
     _truncate_all(database_url)
     yield

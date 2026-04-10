@@ -195,7 +195,9 @@ class AppRepository:
 
                     next_name = name if name is not None else _str(current["name"])
                     next_is_active = (
-                        is_active if is_active is not None else _bool(current["is_active"])
+                        is_active
+                        if is_active is not None
+                        else _bool(current["is_active"])
                     )
                     if next_is_active:
                         self._assert_active_account_name_available(
@@ -321,7 +323,9 @@ class AppRepository:
                             )
                             inserted = cur.fetchone()
                             if inserted is None:
-                                raise ValueError("Failed to create account in bulk save")
+                                raise ValueError(
+                                    "Failed to create account in bulk save"
+                                )
                             rows_by_code[item.code] = inserted
                             continue
 

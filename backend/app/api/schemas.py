@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from datetime import datetime
 from decimal import Decimal
-from typing import Literal
+from typing import Literal, cast
 from uuid import UUID
 
 from pydantic import BaseModel
@@ -97,23 +97,22 @@ class JournalEntryResponse(BaseModel):
 
     @classmethod
     def from_record(cls, record: JournalEntryRecord) -> "JournalEntryResponse":
-        payload = {
-            "id": record.id,
-            "invoice_id": record.invoice_id,
-            "status": record.status,
-            "currency": record.currency,
-            "total_debit": record.total_debit,
-            "total_credit": record.total_credit,
-            "decided_at": record.decided_at,
-            "decision_reason": record.decision_reason,
-            "created_at": record.created_at,
-            "updated_at": record.updated_at,
-            "postings": [
+        return cls(
+            id=record.id,
+            invoice_id=record.invoice_id,
+            status=cast(Literal["pending", "approved", "declined"], record.status),
+            currency=record.currency,
+            total_debit=record.total_debit,
+            total_credit=record.total_credit,
+            decided_at=record.decided_at,
+            decision_reason=record.decision_reason,
+            created_at=record.created_at,
+            updated_at=record.updated_at,
+            postings=[
                 JournalPostingResponse.from_record(posting)
                 for posting in record.postings
             ],
-        }
-        return cls(**payload)
+        )
 
 
 class InvoiceResponse(BaseModel):

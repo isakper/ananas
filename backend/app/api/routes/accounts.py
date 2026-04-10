@@ -2,14 +2,16 @@
 
 from __future__ import annotations
 
+from uuid import UUID
+
 from fastapi import APIRouter, Depends, HTTPException
 
 from backend.app.api.deps import get_repository
 from backend.app.api.schemas import (
     AccountBulkSaveRequest,
     AccountCreateRequest,
-    AccountSnapshotItemRequest,
     AccountResponse,
+    AccountSnapshotItemRequest,
     AccountUpdateRequest,
 )
 from backend.app.core.repository import (
@@ -127,9 +129,7 @@ def _normalized_name(value: str | None) -> str | None:
     return name
 
 
-def _parse_uuid(value: str):
-    from uuid import UUID
-
+def _parse_uuid(value: str) -> UUID:
     try:
         return UUID(value)
     except ValueError as exc:
