@@ -13,6 +13,7 @@ from psycopg.rows import dict_row
 from backend.app.accounting.service import PostingAmounts, calculate_totals, is_balanced
 from backend.app.accounting.types import SuggestedPosting
 from backend.app.core.db import Database
+from backend.app.core.default_accounts import DEFAULT_ACCOUNTS
 from backend.app.core.records import (
     AccountRecord,
     InvoiceBundleRecord,
@@ -84,6 +85,23 @@ class AppRepository:
                 )
                 rows = cur.fetchall()
         return [_account_from_row(row) for row in rows]
+
+    def ensure_default_accounts(self) -> None:
+        """Ensure default accounts exist and are active on service startup."""
+        with self._database.connection() as conn:
+            with conn.cursor() as cur:
+                for code, name in DEFAULT_ACCOUNTS:
+                    cur.execute(
+                        """
+                        INSERT INTO accounts (code, name, is_active)
+                        VALUES (%s, %s, TRUE)
+                        ON CONFLICT (code) DO UPDATE
+                        SET
+                          name = EXCLUDED.name,
+                          is_active = TRUE
+                        """,
+                        (code, name),
+                    )
 
     def get_account(self, account_id: UUID) -> AccountRecord | None:
         """Return chart-of-accounts row by id."""
@@ -555,8 +573,6 @@ class AppRepository:
             PostingAmounts(debit=posting.debit_amount, credit=posting.credit_amount)
             for posting in postings
         ]
-        if not is_balanced(amounts):
-            raise ValueError("Suggested journal entry is not balanced")
         total_debit, total_credit = calculate_totals(amounts)
 
         with self._database.connection() as conn:
@@ -911,9 +927,10 @@ class AppRepository:
     ) -> None:
         cur.execute(
             """
-            SELECT duplicate_of_invoice_id
+            SELECT content_hash
             FROM invoices
             WHERE id = %s
+            FOR UPDATE
             """,
             (invoice_id,),
         )
@@ -921,11 +938,44 @@ class AppRepository:
         if row is None:
             raise ValueError("Invoice not found for journal entry")
 
-        duplicate_of = row["duplicate_of_invoice_id"]
-        if duplicate_of is not None:
-            duplicate_id = _uuid(duplicate_of)
+        content_hash_raw = row["content_hash"]
+        if content_hash_raw is None:
+            return
+        content_hash = _str(content_hash_raw)
+        if content_hash == "":
+            return
+
+        # Lock whole duplicate group so concurrent approvals cannot pass together.
+        cur.execute(
+            """
+            SELECT id
+            FROM invoices
+            WHERE content_hash = %s
+            FOR UPDATE
+            """,
+            (content_hash,),
+        )
+
+        cur.execute(
+            """
+            SELECT i.id AS approved_invoice_id
+            FROM invoices i
+            JOIN journal_entries je
+              ON je.invoice_id = i.id
+            WHERE i.content_hash = %s
+              AND i.id <> %s
+              AND je.status = 'approved'
+            ORDER BY je.decided_at ASC NULLS LAST, je.updated_at ASC, je.id ASC
+            LIMIT 1
+            """,
+            (content_hash, invoice_id),
+        )
+        approved_row = cur.fetchone()
+        if approved_row is not None:
+            approved_invoice_id = _uuid(approved_row["approved_invoice_id"])
             raise ValueError(
-                f"Approval blocked: invoice is marked duplicate of {duplicate_id}"
+                "Approval blocked: duplicate invoice group already approved by "
+                f"{approved_invoice_id}"
             )
 
     def _load_account_row(self, cur: Any, account_id: UUID) -> dict[str, Any] | None:

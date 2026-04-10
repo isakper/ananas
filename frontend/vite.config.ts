@@ -1,5 +1,5 @@
-import { defineConfig } from 'vite'
 import react from '@vitejs/plugin-react'
+import { defineConfig } from 'vitest/config'
 
 const proxyTarget = process.env.VITE_PROXY_TARGET ?? 'http://127.0.0.1:8000'
 
@@ -13,5 +13,11 @@ export default defineConfig({
       '/invoices': proxyTarget,
       '/journal-entries': proxyTarget,
     },
+  },
+  test: {
+    environment: 'jsdom',
+    globals: true,
+    setupFiles: './tests/setup.ts',
+    include: ['tests/**/*.test.tsx'],
   },
 })

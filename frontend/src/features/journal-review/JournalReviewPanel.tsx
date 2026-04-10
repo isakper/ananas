@@ -276,7 +276,6 @@ export function JournalReviewPanel({
 
   const canApprove =
     entry.status === 'pending' &&
-    duplicateOfInvoiceId === null &&
     approvalViolations.length === 0 &&
     !hasUnsavedChanges &&
     !isSavingEdits
@@ -319,9 +318,10 @@ export function JournalReviewPanel({
 
       {duplicateOfInvoiceId !== null ? (
         <div className="warning-panel" role="alert">
-          <strong>Approval blocked</strong>
+          <strong>Possible duplicate</strong>
           <p className="small-muted">
-            Possible duplicate of invoice {duplicateOfInvoiceId.slice(0, 8)}.
+            This invoice matches invoice {duplicateOfInvoiceId.slice(0, 8)}. Only one
+            invoice in this duplicate group can be approved.
           </p>
         </div>
       ) : null}

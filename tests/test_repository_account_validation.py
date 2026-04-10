@@ -25,18 +25,35 @@ class _CursorStub:
 
 
 class _InvoiceDuplicateCursorStub:
-    def __init__(self, duplicate_of_invoice_id: object, has_row: bool = True) -> None:
-        self.duplicate_of_invoice_id = duplicate_of_invoice_id
+    def __init__(
+        self,
+        *,
+        has_row: bool = True,
+        content_hash: object = "hash-1",
+        approved_invoice_id: object | None = None,
+    ) -> None:
         self.has_row = has_row
+        self.content_hash = content_hash
+        self.approved_invoice_id = approved_invoice_id
         self.last_params: tuple[object, ...] | None = None
+        self._last_query: str = ""
 
-    def execute(self, _query: str, params: tuple[object, ...]) -> None:
+    def execute(self, query: str, params: tuple[object, ...]) -> None:
         self.last_params = params
+        self._last_query = query
 
     def fetchone(self) -> dict[str, object] | None:
-        if not self.has_row:
-            return None
-        return {"duplicate_of_invoice_id": self.duplicate_of_invoice_id}
+        if "SELECT content_hash" in self._last_query:
+            if not self.has_row:
+                return None
+            return {"content_hash": self.content_hash}
+
+        if "approved_invoice_id" in self._last_query:
+            if self.approved_invoice_id is None:
+                return None
+            return {"approved_invoice_id": self.approved_invoice_id}
+
+        return None
 
 
 def _posting(account_id, line_no: int) -> JournalPostingRecord:
@@ -133,25 +150,38 @@ def test_update_pending_journal_entry_rejects_unbalanced_totals() -> None:
 
 def test_duplicate_approval_check_accepts_non_duplicate_invoice() -> None:
     repository = AppRepository(database=None)  # type: ignore[arg-type]
-    cursor = _InvoiceDuplicateCursorStub(duplicate_of_invoice_id=None)
+    cursor = _InvoiceDuplicateCursorStub(content_hash=None)
 
     repository._assert_invoice_not_duplicate_for_approval(cursor, invoice_id=uuid4())
 
     assert cursor.last_params is not None
 
 
-def test_duplicate_approval_check_rejects_duplicate_invoice() -> None:
+def test_duplicate_approval_check_accepts_duplicate_without_approved_peer() -> None:
     repository = AppRepository(database=None)  # type: ignore[arg-type]
-    duplicate_of = uuid4()
-    cursor = _InvoiceDuplicateCursorStub(duplicate_of_invoice_id=duplicate_of)
+    cursor = _InvoiceDuplicateCursorStub(
+        content_hash="same-hash",
+        approved_invoice_id=None,
+    )
 
-    with pytest.raises(ValueError, match="marked duplicate"):
+    repository._assert_invoice_not_duplicate_for_approval(cursor, invoice_id=uuid4())
+
+
+def test_duplicate_approval_check_rejects_when_group_already_approved() -> None:
+    repository = AppRepository(database=None)  # type: ignore[arg-type]
+    approved_invoice_id = uuid4()
+    cursor = _InvoiceDuplicateCursorStub(
+        content_hash="same-hash",
+        approved_invoice_id=approved_invoice_id,
+    )
+
+    with pytest.raises(ValueError, match="already approved"):
         repository._assert_invoice_not_duplicate_for_approval(cursor, invoice_id=uuid4())
 
 
 def test_duplicate_approval_check_rejects_missing_invoice_row() -> None:
     repository = AppRepository(database=None)  # type: ignore[arg-type]
-    cursor = _InvoiceDuplicateCursorStub(duplicate_of_invoice_id=None, has_row=False)
+    cursor = _InvoiceDuplicateCursorStub(has_row=False)
 
     with pytest.raises(ValueError, match="Invoice not found"):
         repository._assert_invoice_not_duplicate_for_approval(cursor, invoice_id=uuid4())

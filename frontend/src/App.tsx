@@ -165,7 +165,7 @@ function App() {
       return sorted
     } catch (error) {
       setErrorMessage(toErrorMessage(error))
-      return []
+      throw error
     } finally {
       setIsLoadingAccounts(false)
     }
@@ -204,7 +204,7 @@ function App() {
   }, [])
 
   useEffect(() => {
-    void refreshAccounts()
+    void refreshAccounts().catch(() => undefined)
   }, [refreshAccounts])
 
   useEffect(() => {
@@ -347,13 +347,6 @@ function App() {
     if (entryId === undefined || selectedBundle === null) {
       return
     }
-    const duplicateOfInvoiceId = selectedBundle.invoice.duplicate_of_invoice_id
-    if (duplicateOfInvoiceId !== null) {
-      setErrorMessage(
-        `Approval blocked: invoice is flagged as duplicate of ${shortId(duplicateOfInvoiceId)}.`,
-      )
-      return
-    }
 
     setErrorMessage(null)
     setIsApproving(true)
@@ -398,14 +391,18 @@ function App() {
   async function handleSaveAccountSnapshot(input: { code: number; name: string }[]) {
     setErrorMessage(null)
     setIsMutatingAccounts(true)
+    let snapshotSaved = false
     try {
-      const saved = await saveAccountsBulk(input)
-      const sorted = sortAccounts(saved)
-      setAccounts(sorted)
-      return sorted
+      await saveAccountsBulk(input)
+      snapshotSaved = true
+      return await refreshAccounts()
     } catch (error) {
-      setErrorMessage(toErrorMessage(error))
-      throw error
+      const detail = toErrorMessage(error)
+      const message = snapshotSaved
+        ? `Chart of accounts saved, but failed to sync latest state. ${detail}`
+        : detail
+      setErrorMessage(message)
+      throw new Error(message)
     } finally {
       setIsMutatingAccounts(false)
     }

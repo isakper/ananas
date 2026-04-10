@@ -48,6 +48,12 @@ app.include_router(invoices_router)
 app.include_router(journal_entries_router)
 
 
+@app.on_event("startup")
+def seed_default_accounts() -> None:
+    """Seed baseline accounts on each backend startup."""
+    repository.ensure_default_accounts()
+
+
 @app.get("/health", response_model=HealthResponse)
 def health() -> HealthResponse:
     """Basic liveness endpoint."""

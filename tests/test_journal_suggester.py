@@ -89,8 +89,8 @@ def test_suggest_raises_on_missing_json() -> None:
         )
 
 
-def test_suggest_raises_on_unbalanced_postings() -> None:
-    """Raises when parsed postings are not balanced."""
+def test_suggest_allows_unbalanced_postings() -> None:
+    """Returns parsed postings even when debits/credits are unbalanced."""
     gateway = _StaticGateway(
         LlmResponse(
             text="",
@@ -115,8 +115,11 @@ def test_suggest_raises_on_unbalanced_postings() -> None:
     )
     suggester = LlmJournalSuggester(llm_gateway=gateway)
 
-    with pytest.raises(ValueError, match="not balanced"):
-        suggester.suggest(
-            markdown="# Invoice",
-            accounts=[_account(6530, "IT"), _account(2440, "AP")],
-        )
+    postings = suggester.suggest(
+        markdown="# Invoice",
+        accounts=[_account(6530, "IT"), _account(2440, "AP")],
+    )
+
+    assert len(postings) == 2
+    assert str(postings[0].debit_amount) == "1000.00"
+    assert str(postings[1].credit_amount) == "900.00"

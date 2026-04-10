@@ -5,7 +5,6 @@ from __future__ import annotations
 from decimal import Decimal, InvalidOperation
 from typing import Any, Protocol
 
-from backend.app.accounting.service import PostingAmounts, is_balanced
 from backend.app.accounting.types import SuggestedPosting
 from backend.app.core.records import AccountRecord
 from backend.app.integrations.llm.client import LlmGateway
@@ -30,7 +29,7 @@ class LlmJournalSuggester:
     def suggest(
         self, markdown: str, accounts: list[AccountRecord]
     ) -> list[SuggestedPosting]:
-        """Generate a balanced journal suggestion from markdown."""
+        """Generate journal posting suggestions from markdown."""
         active_accounts = [account for account in accounts if account.is_active]
         if len(active_accounts) == 0:
             raise ValueError("No active accounts available")
@@ -56,12 +55,6 @@ class LlmJournalSuggester:
         postings = _postings_from_payload(payload=payload, accounts=active_accounts)
         if len(postings) == 0:
             raise ValueError("LLM output did not contain valid journal postings")
-        amounts = [
-            PostingAmounts(debit=posting.debit_amount, credit=posting.credit_amount)
-            for posting in postings
-        ]
-        if not is_balanced(amounts):
-            raise ValueError("LLM suggested postings are not balanced")
         return postings
 
 
