@@ -45,6 +45,14 @@ class PostingUpdate:
     credit_amount: Decimal
 
 
+@dataclass(frozen=True)
+class AccountSnapshotItem:
+    """Desired active account state item for bulk save operations."""
+
+    code: int
+    name: str
+
+
 class AccountConflictError(ValueError):
     """Raised when account uniqueness constraints are violated."""
 
@@ -214,6 +222,116 @@ class AppRepository:
             name=None,
             is_active=False,
         )
+
+    def save_accounts_snapshot(
+        self, accounts: list[AccountSnapshotItem]
+    ) -> list[AccountRecord]:
+        """Atomically replace the active chart of accounts with the provided snapshot."""
+        if len(accounts) == 0:
+            raise ValueError("At least one account is required")
+
+        seen_codes: set[int] = set()
+        seen_names: set[str] = set()
+        for account in accounts:
+            if account.code in seen_codes:
+                raise AccountConflictError(f"Duplicate account code: {account.code}")
+            seen_codes.add(account.code)
+
+            normalized_name = account.name.strip().lower()
+            if normalized_name in seen_names:
+                raise AccountConflictError(
+                    f"Duplicate account name: {account.name.strip()}"
+                )
+            seen_names.add(normalized_name)
+
+        desired_by_code = {account.code: account for account in accounts}
+        desired_codes = set(desired_by_code.keys())
+
+        try:
+            with self._database.connection() as conn:
+                with conn.cursor(row_factory=dict_row) as cur:
+                    cur.execute(
+                        """
+                        SELECT id, code, name, is_active, created_at, updated_at
+                        FROM accounts
+                        ORDER BY code
+                        """
+                    )
+                    rows = cur.fetchall()
+                    rows_by_code = {_int(row["code"]): row for row in rows}
+                    active_rows = [row for row in rows if _bool(row["is_active"])]
+
+                    for row in active_rows:
+                        code = _int(row["code"])
+                        if code in desired_codes:
+                            continue
+                        account_id = _uuid(row["id"])
+                        if self._account_used_in_approved_entries(cur, account_id):
+                            raise AccountInUseError(
+                                f"Account {code} is used by an approved journal entry"
+                            )
+
+                    for row in active_rows:
+                        code = _int(row["code"])
+                        if code in desired_codes:
+                            continue
+                        cur.execute(
+                            """
+                            UPDATE accounts
+                            SET is_active = FALSE
+                            WHERE id = %s
+                            """,
+                            (_uuid(row["id"]),),
+                        )
+
+                    for item in accounts:
+                        existing_row = rows_by_code.get(item.code)
+                        if existing_row is None:
+                            cur.execute(
+                                """
+                                INSERT INTO accounts (code, name, is_active)
+                                VALUES (%s, %s, TRUE)
+                                RETURNING id, code, name, is_active, created_at, updated_at
+                                """,
+                                (item.code, item.name),
+                            )
+                            inserted = cur.fetchone()
+                            if inserted is None:
+                                raise ValueError("Failed to create account in bulk save")
+                            rows_by_code[item.code] = inserted
+                            continue
+
+                        cur.execute(
+                            """
+                            UPDATE accounts
+                            SET name = %s,
+                                is_active = TRUE
+                            WHERE id = %s
+                            RETURNING id, code, name, is_active, created_at, updated_at
+                            """,
+                            (item.name, _uuid(existing_row["id"])),
+                        )
+                        updated = cur.fetchone()
+                        if updated is None:
+                            raise ValueError("Failed to update account in bulk save")
+                        rows_by_code[item.code] = updated
+
+                    cur.execute(
+                        """
+                        SELECT id, code, name, is_active, created_at, updated_at
+                        FROM accounts
+                        ORDER BY code
+                        """
+                    )
+                    final_rows = cur.fetchall()
+        except Exception as exc:
+            if isinstance(exc, AccountConflictError | AccountInUseError):
+                raise
+            if _is_unique_violation(exc):
+                raise AccountConflictError("Account code or name already exists") from exc
+            raise
+
+        return [_account_from_row(row) for row in final_rows]
 
     def create_invoice(
         self,

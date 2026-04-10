@@ -48,6 +48,19 @@ class AccountUpdateRequest(BaseModel):
     is_active: bool | None = None
 
 
+class AccountSnapshotItemRequest(BaseModel):
+    """One account item in a bulk snapshot save payload."""
+
+    code: int
+    name: str
+
+
+class AccountBulkSaveRequest(BaseModel):
+    """Payload for atomically saving the active chart of accounts."""
+
+    accounts: list[AccountSnapshotItemRequest]
+
+
 class JournalPostingResponse(BaseModel):
     """Journal posting output model."""
 

@@ -13,10 +13,7 @@ interface AccountsPanelProps {
   accounts: Account[]
   isMutating: boolean
   isLoading: boolean
-  onCreate: (input: { code: number; name: string }) => Promise<void>
-  onRefresh: () => Promise<Account[]>
-  onRemove: (accountId: string) => Promise<void>
-  onUpdate: (accountId: string, input: { code: number; name: string }) => Promise<void>
+  onSaveSnapshot: (input: { code: number; name: string }[]) => Promise<Account[]>
   onUnsavedChangesChange?: (hasUnsavedChanges: boolean) => void
 }
 
@@ -66,18 +63,11 @@ function normalizeForComparison(accounts: EditableAccount[]): string {
   )
 }
 
-function isDraftAccountId(accountId: string): boolean {
-  return accountId.startsWith(DRAFT_ACCOUNT_ID_PREFIX)
-}
-
 export function AccountsPanel({
   accounts,
   isMutating,
   isLoading,
-  onCreate,
-  onRefresh,
-  onRemove,
-  onUpdate,
+  onSaveSnapshot,
   onUnsavedChangesChange,
 }: AccountsPanelProps) {
   const activeEditableAccounts = useMemo(
@@ -212,53 +202,30 @@ export function AccountsPanel({
       return
     }
 
-    const baselineById = new Map(baselineAccounts.map((account) => [account.id, account]))
-    const workingById = new Map(workingAccounts.map((account) => [account.id, account]))
-
-    const removedIds = baselineAccounts
-      .filter((account) => !workingById.has(account.id))
-      .map((account) => account.id)
-    const created = workingAccounts.filter((account) => isDraftAccountId(account.id))
-    const updated = workingAccounts
-      .filter((account) => !isDraftAccountId(account.id))
-      .filter((account) => {
-        const baseline = baselineById.get(account.id)
-        if (baseline === undefined) {
-          return false
-        }
-        return (
-          baseline.code.trim() !== account.code.trim() ||
-          baseline.name.trim() !== account.name.trim()
-        )
-      })
-
-    if (removedIds.length === 0 && created.length === 0 && updated.length === 0) {
+    if (!hasUnsavedChanges) {
       setSaveMessage('No changes to save.')
       return
     }
 
-    for (const accountId of removedIds) {
-      await onRemove(accountId)
-    }
-    for (const account of updated) {
-      await onUpdate(account.id, {
-        code: Number(account.code),
-        name: account.name.trim(),
-      })
-    }
-    for (const account of created) {
-      await onCreate({
-        code: Number(account.code),
-        name: account.name.trim(),
-      })
-    }
+    const snapshotInput = sortedEditableAccounts(workingAccounts).map((account) => ({
+      code: Number(account.code),
+      name: account.name.trim(),
+    }))
 
-    const refreshedAccounts = await onRefresh()
-    const refreshedEditable = toActiveEditableAccounts(refreshedAccounts)
-    setBaselineAccounts(refreshedEditable)
-    setWorkingAccounts(refreshedEditable)
-    setEditAccountId(null)
-    setSaveMessage('Chart of accounts saved.')
+    try {
+      const refreshedAccounts = await onSaveSnapshot(snapshotInput)
+      const refreshedEditable = toActiveEditableAccounts(refreshedAccounts)
+      setBaselineAccounts(refreshedEditable)
+      setWorkingAccounts(refreshedEditable)
+      setEditAccountId(null)
+      setSaveMessage('Chart of accounts saved.')
+    } catch (error) {
+      if (error instanceof Error && error.message.trim() !== '') {
+        setLocalError(error.message)
+        return
+      }
+      setLocalError('Failed to save chart of accounts.')
+    }
   }
 
   return (
