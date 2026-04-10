@@ -61,6 +61,10 @@ class AccountInUseError(ValueError):
     """Raised when attempting to deactivate an account used by approved entries."""
 
 
+ACCOUNT_CODE_CONSTRAINT_NAMES = {"accounts_code_key"}
+ACCOUNT_NAME_CONSTRAINT_NAMES = {"accounts_active_name_unique_idx"}
+
+
 class AppRepository:
     """PostgreSQL repository for core take-home workflows."""
 
@@ -148,8 +152,9 @@ class AppRepository:
                     )
                     row = cur.fetchone()
         except Exception as exc:
-            if _is_unique_violation(exc):
-                raise AccountConflictError("Account code already exists") from exc
+            conflict_error = _account_conflict_error_from_exception(exc)
+            if conflict_error is not None:
+                raise conflict_error from exc
             raise
         if row is None:
             raise ValueError("Failed to create account")
@@ -206,8 +211,9 @@ class AppRepository:
         except Exception as exc:
             if isinstance(exc, AccountInUseError):
                 raise
-            if _is_unique_violation(exc):
-                raise AccountConflictError("Account code already exists") from exc
+            conflict_error = _account_conflict_error_from_exception(exc)
+            if conflict_error is not None:
+                raise conflict_error from exc
             raise
 
         if row is None:
@@ -327,8 +333,9 @@ class AppRepository:
         except Exception as exc:
             if isinstance(exc, AccountConflictError | AccountInUseError):
                 raise
-            if _is_unique_violation(exc):
-                raise AccountConflictError("Account code or name already exists") from exc
+            conflict_error = _account_conflict_error_from_exception(exc)
+            if conflict_error is not None:
+                raise conflict_error from exc
             raise
 
         return [_account_from_row(row) for row in final_rows]
@@ -1093,5 +1100,37 @@ def _datetime(value: Any) -> datetime:
 
 
 def _is_unique_violation(exc: Exception) -> bool:
+    if _unique_violation_constraint_name(exc) is not None:
+        return True
     message = str(exc).lower()
     return "duplicate key value violates unique constraint" in message
+
+
+def _unique_violation_constraint_name(exc: Exception) -> str | None:
+    current: BaseException | None = exc
+    while current is not None:
+        sqlstate = getattr(current, "sqlstate", None)
+        if sqlstate == "23505":
+            diag = getattr(current, "diag", None)
+            constraint_name = getattr(diag, "constraint_name", None)
+            if isinstance(constraint_name, str) and constraint_name.strip() != "":
+                return constraint_name.strip()
+            return ""
+        current = current.__cause__
+    return None
+
+
+def _account_conflict_error_from_exception(
+    exc: Exception,
+) -> AccountConflictError | None:
+    constraint_name = _unique_violation_constraint_name(exc)
+    if constraint_name is None:
+        if _is_unique_violation(exc):
+            return AccountConflictError("Account code or name already exists")
+        return None
+
+    if constraint_name in ACCOUNT_CODE_CONSTRAINT_NAMES:
+        return AccountConflictError("Account code already exists")
+    if constraint_name in ACCOUNT_NAME_CONSTRAINT_NAMES:
+        return AccountConflictError("Account name already exists")
+    return AccountConflictError("Account code or name already exists")
